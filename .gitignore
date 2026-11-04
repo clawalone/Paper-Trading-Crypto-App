@@ -1,0 +1,68 @@
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio build artifacts
+/android/app/debug
+/android/app/profile
+/android/app/release
+local.properties
+**/local.properties
+.gradle/
+**/.gradle/
+
+# Node modules
+node_modules/
+**/node_modules/
+
+# --- SENSITIVE SECRETS & CREDENTIALS ---
+# Keystores, signing keys & certificates
+*.jks
+*.keystore
+*.pem
+key.properties
+**/key.properties
+
+# Google Services & Firebase service accounts
+google-services.json
+**/google-services.json
+GoogleService-Info.plist
+**/GoogleService-Info.plist
+*firebase-adminsdk*.json
+serviceAccountKey.json
+**/serviceAccountKey.json
+
+# Environment variables
+.env
+.env.*

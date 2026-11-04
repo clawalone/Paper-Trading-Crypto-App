@@ -1,0 +1,252 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: app_config
+    // Document ID: 'version' | 'promotions'
+    // Fields:
+    //   - version: latestVersion (string), latestBuildNumber (int), updateMessage (string), forceUpdate (bool), updatedAt (timestamp)
+    //   - promotions: offerId (string), title (string), message (string), badgeText (string), buttonText (string), isActive (bool), repeat (bool), updatedAt (timestamp)
+    //
+    // Collection: users
+    // Document ID: userId (matches request.auth.uid)
+    // Subcollections:
+    //   - following: followingId
+    //   - followers: followerId
+    //   - notifications: notificationId
+    //
+    // Collection: money_requests
+    // Document ID: auto-generated requestId
+    // Fields:
+    //   - requesterName (string), requesterUid (string), requesterId (string), amount (number), inrAmount (number),
+    //     paymentId (string), paymentMethod (string), reason (string), requesterNetWorth (number), status (string),
+    //     createdAt (string), previousBalance (number), newBalance (number)
+    //
+    // Collection: feature_requests
+    // Document ID: auto-generated docId
+    // Fields:
+    //   - title (string), description (string), category (string), status (string), requesterName (string), requesterUid (string), timestamp (timestamp)
+    //
+    // Collection: weekly_championship
+    // Document ID: tournament participant ID (uid or sanitized email)
+    // Fields:
+    //   - uid (string), name (string), photoUrl (string), xp (number), wins (int), losses (int), tournamentScore (number),
+    //     lastUpdated (timestamp), lastResetAt (timestamp), joinedAt (timestamp)
+    //
+    // Collection: championship_settlement
+    // Document ID: weekId (e.g. 'Week-2026-11-02')
+    // Fields:
+    //   - settled (bool), settledAt (timestamp), autoTriggered (bool), winnersCount (int), weekId (string)
+    //
+    // Collection: weekly_prizes
+    // Document ID: prize recipient ID (doc.id matching weekly_championship record)
+    // Fields:
+    //   - uid (string), name (string), rank (int), amount (number), weekId (string), claimed (bool), awardedAt (timestamp), claimedAt (timestamp)
+    //
+    // Collection: community_posts
+    // Document ID: postId
+    // Fields: authorId (string), authorName (string), content (string), likesCount (int), commentsCount (int), ...
+    //
+    // Collection: community_comments
+    // Document ID: commentId
+    // Fields: postId (string), authorId (string), text (string), timestamp (timestamp), ...
+    //
+    // Collection: community_tips
+    // Document ID: tipId
+    // Fields:
+    //   - id (string), postId (string), senderId (string), senderName (string),
+    //     recipientId (string), recipientName (string), amount (number),
+    //     claimed (bool), createdAt (timestamp), claimedAt (optional timestamp)
+    //
+    // Collection: admin_broadcasts
+    // Document ID: auto-generated broadcastId
+    // Fields:
+    //   - title (string), message (string), category (string), type (string),
+    //     target (string), senderUid (string), createdAt (timestamp)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && request.auth.token.email == "admin@gmail.com";
+    }
+
+    function isValidWeeklyPrize(data) {
+      return data.keys().hasAll(['uid', 'name', 'rank', 'amount', 'weekId', 'claimed', 'awardedAt']) &&
+             data.keys().hasOnly(['uid', 'name', 'rank', 'amount', 'weekId', 'claimed', 'awardedAt', 'claimedAt']) &&
+             data.uid is string && data.uid.size() > 0 && data.uid.size() <= 128 &&
+             data.name is string && data.name.size() <= 100 &&
+             data.rank is number && data.rank > 0 && data.rank <= 100 &&
+             data.amount is number && data.amount >= 0 && data.amount <= 10000000 &&
+             data.weekId is string && data.weekId.size() > 0 && data.weekId.size() <= 100 &&
+             data.claimed is bool &&
+             data.awardedAt is timestamp &&
+             (!('claimedAt' in data) || data.claimedAt is timestamp);
+    }
+
+    function isValidCommunityTip(data) {
+      return data.keys().hasAll(['id', 'postId', 'senderId', 'senderName', 'recipientId', 'recipientName', 'amount', 'claimed', 'createdAt']) &&
+             data.keys().hasOnly(['id', 'postId', 'senderId', 'senderName', 'recipientId', 'recipientName', 'amount', 'claimed', 'createdAt', 'claimedAt']) &&
+             data.id is string && data.id.size() > 0 && data.id.size() <= 100 &&
+             data.postId is string && data.postId.size() > 0 && data.postId.size() <= 100 &&
+             data.senderId is string && data.senderId.size() > 0 && data.senderId.size() <= 100 &&
+             data.senderName is string && data.senderName.size() > 0 && data.senderName.size() <= 100 &&
+             data.recipientId is string && data.recipientId.size() > 0 && data.recipientId.size() <= 100 &&
+             data.recipientName is string && data.recipientName.size() > 0 && data.recipientName.size() <= 100 &&
+             data.amount is number && data.amount > 0 &&
+             data.claimed is bool &&
+             data.createdAt is timestamp &&
+             (!('claimedAt' in data) || data.claimedAt is timestamp);
+    }
+
+    function isValidAdminBroadcast(data) {
+      return data.keys().hasAll(['title', 'message', 'category', 'type']) &&
+             data.keys().hasOnly(['title', 'message', 'category', 'type', 'target', 'senderUid', 'createdAt']) &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+             data.message is string && data.message.size() <= 2000 &&
+             data.category is string && data.category.size() > 0 && data.category.size() <= 100 &&
+             data.type is string && data.type.size() > 0 && data.type.size() <= 100 &&
+             (!('target' in data) || (data.target is string && data.target.size() <= 100)) &&
+             (!('senderUid' in data) || (data.senderUid is string && data.senderUid.size() <= 128)) &&
+             (!('createdAt' in data) || data.createdAt is timestamp);
+    }
+
+    // ── APP CONFIG COLLECTION (IN-APP UPDATE CHECKS & SETTINGS) ─────
+    match /app_config/{docId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ── ADMIN BROADCASTS COLLECTION (PUSH NOTIFICATIONS VIA CLOUD FUNCTIONS) ──
+    match /admin_broadcasts/{broadcastId} {
+      allow read: if isAuthenticated() && isAdmin();
+      allow create: if isAuthenticated() && isAdmin() && isValidAdminBroadcast(request.resource.data);
+      allow update: if isAdmin() && isValidAdminBroadcast(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // ── USERS COLLECTION & SUBCOLLECTIONS (FOLLOWING, FOLLOWERS & NOTIFICATIONS) ──
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow delete: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+
+      match /following/{followingId} {
+        allow read, write: if isAuthenticated();
+      }
+
+      match /followers/{followerId} {
+        allow read, write: if isAuthenticated();
+      }
+
+      match /notifications/{notificationId} {
+        allow read, update, delete: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+        allow create: if isAuthenticated();
+      }
+    }
+
+    // ── MONEY REQUESTS COLLECTION ──────────────────────────────────
+    match /money_requests/{requestId} {
+      allow read: if isAuthenticated() && (
+        resource.data.requesterId == request.auth.uid ||
+        resource.data.requesterUid == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isAuthenticated() && (
+        request.resource.data.requesterId == request.auth.uid ||
+        isAdmin()
+      );
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── FEATURE REQUESTS COLLECTION ────────────────────────────────
+    match /feature_requests/{docId} {
+      allow read, create: if isAuthenticated();
+      allow update, delete: if isAdmin();
+    }
+
+    // ── WEEKLY CHAMPIONSHIP COLLECTION ─────────────────────────────
+    match /weekly_championship/{docId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+
+    // ── CHAMPIONSHIP SETTLEMENT COLLECTION ────────────────────────
+    match /championship_settlement/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // ── WEEKLY PRIZES COLLECTION ────────────────────────────────────
+    match /weekly_prizes/{prizeId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && (
+        isAdmin() ||
+        isValidWeeklyPrize(request.resource.data)
+      );
+      allow update: if isAuthenticated() && (
+        isAdmin() ||
+        isValidWeeklyPrize(request.resource.data) ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['claimed', 'claimedAt'])
+      );
+      allow delete: if isAdmin();
+    }
+
+    // ── COMMUNITY POSTS COLLECTION ────────────────────────────────
+    match /community_posts/{postId} {
+      allow read, create, update: if true;
+      allow delete: if isAuthenticated() && (resource.data.authorId == request.auth.uid || isAdmin());
+    }
+
+    // ── COMMUNITY COMMENTS COLLECTION ─────────────────────────────
+    match /community_comments/{commentId} {
+      allow read, create, update: if true;
+      allow delete: if isAuthenticated() && (resource.data.authorId == request.auth.uid || isAdmin());
+    }
+
+    // ── COMMUNITY TIPS COLLECTION ─────────────────────────────────
+    match /community_tips/{tipId} {
+      allow read: if isAuthenticated() && (
+        resource.data.recipientId == request.auth.uid ||
+        resource.data.senderId == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isAuthenticated() &&
+        isValidCommunityTip(request.resource.data) && (
+          (
+            request.resource.data.senderId == request.auth.uid &&
+            request.resource.data.recipientId != request.auth.uid &&
+            request.resource.data.claimed == false &&
+            !('claimedAt' in request.resource.data)
+          ) || isAdmin()
+        );
+      allow update: if isAuthenticated() &&
+        isValidCommunityTip(request.resource.data) && (
+          (
+            resource.data.recipientId == request.auth.uid &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['claimed', 'claimedAt']) &&
+            request.resource.data.claimed == true
+          ) || isAdmin()
+        );
+      allow delete: if isAdmin();
+    }
+
+    // ── DEFAULT FALLBACK ───────────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
