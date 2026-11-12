@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';

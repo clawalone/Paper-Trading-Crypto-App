@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -148,7 +148,14 @@ class ChampionshipPrizeManager {
 
     try {
       final userState = ref.read(userProvider);
-      final email = userState.profile.email;
+      final email = userState.profile.email.toLowerCase();
+      final name = userState.profile.name.toLowerCase();
+
+      // Admin accounts are excluded from championship tournament rewards
+      if (email == 'admin@gmail.com' || email.contains('admin') || name.contains('admin')) {
+        return;
+      }
+
       final authUid = FirebaseAuth.instance.currentUser?.uid;
       final uidKey = email.isNotEmpty ? email.replaceAll('.', '_') : authUid;
 
@@ -526,10 +533,28 @@ class ChampionshipPrizeManager {
           .orderBy('tournamentScore', descending: true)
           .get();
 
-      // Filter out internal metadata and prize docs
-      final validParticipants = snapshot.docs.where((d) =>
-        !d.id.startsWith('__') && !d.id.startsWith('prize_') && !d.id.startsWith('settlement_')
-      ).toList();
+      // Filter out internal metadata, prize docs, and admin accounts
+      final validParticipants = snapshot.docs.where((d) {
+        if (d.id.startsWith('__') || d.id.startsWith('prize_') || d.id.startsWith('settlement_')) {
+          return false;
+        }
+        final docIdLower = d.id.toLowerCase();
+        final data = d.data();
+        final nameLower = (data['name'] as String?)?.toLowerCase() ?? '';
+        final emailLower = (data['email'] as String?)?.toLowerCase() ?? '';
+        if (docIdLower == 'admin' ||
+            docIdLower.contains('admin@') ||
+            docIdLower.contains('admin_') ||
+            docIdLower.contains('_admin') ||
+            nameLower.contains('admin') ||
+            emailLower.contains('admin') ||
+            data['isAdmin'] == true ||
+            data['role'] == 'admin') {
+          d.reference.delete().catchError((_) {});
+          return false;
+        }
+        return true;
+      }).toList();
 
       if (validParticipants.isEmpty) {
         return {'success': false, 'message': 'No tournament participants found.'};

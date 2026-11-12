@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart';
 
 import '../../core/championship_prize_manager.dart';
 import '../../data/models.dart';

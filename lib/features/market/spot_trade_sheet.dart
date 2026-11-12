@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_theme.dart';
@@ -7,6 +7,8 @@ import '../../core/currency_formatters.dart';
 import '../../data/market_provider.dart';
 import '../../data/models.dart';
 import '../../data/user_provider.dart';
+import '../../core/rewarded_ad_manager.dart';
+import '../profile/widgets/zero_balance_refill_sheet.dart';
 
 class SpotTradeSheet extends ConsumerStatefulWidget {
   final Stock stock;
@@ -40,6 +42,13 @@ class _SpotTradeSheetState extends ConsumerState<SpotTradeSheet> {
     if (widget.suggestedLimitPrice != null) {
       _orderType = 'Limit';
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final userState = ref.read(userProvider);
+      if (userState.profile.virtualBalance <= 0) {
+        RewardedAdManager.instance.preload();
+      }
+    });
   }
 
   @override
@@ -57,9 +66,12 @@ class _SpotTradeSheetState extends ConsumerState<SpotTradeSheet> {
   }
 
   double get _inputVal => double.tryParse(_inputController.text) ?? 0.0;
-  double get _targetPrice => _orderType == 'Limit'
-      ? (double.tryParse(_targetPriceController.text) ?? _liveStock.currentPrice)
-      : _liveStock.currentPrice;
+  double get _targetPrice {
+    final raw = _orderType == 'Limit'
+        ? (double.tryParse(_targetPriceController.text) ?? _liveStock.currentPrice)
+        : _liveStock.currentPrice;
+    return raw.clamp(0.00000001, double.infinity);
+  }
 
   int get _cryptoQty => _isCryptoInput
       ? _inputVal.floor()
@@ -69,11 +81,7 @@ class _SpotTradeSheetState extends ConsumerState<SpotTradeSheet> {
       _isCryptoInput ? (_inputVal * _targetPrice) : _inputVal;
 
   int _getOwnedQty(UserState state) {
-    final h = state.holdings.firstWhere(
-      (e) => e.symbol == widget.stock.symbol,
-      orElse: () => Holding(symbol: widget.stock.symbol, quantity: 0, averagePrice: 0),
-    );
-    return h.quantity;
+    return state.availableHoldingQty(widget.stock.symbol);
   }
 
   void _adjustTargetPrice(double pct) {
@@ -120,10 +128,16 @@ class _SpotTradeSheetState extends ConsumerState<SpotTradeSheet> {
     final fee = totalCost * 0.001;
     final totalWithFee = isBuy ? totalCost + fee : totalCost - fee;
 
+    final isLimitPlausible = !isLimit || (
+      _targetPrice >= liveStock.currentPrice * 0.70 && _targetPrice <= liveStock.currentPrice * 1.30
+    );
+
     final canExecute = isMarketOnline &&
         liveStock.isLive &&
+        liveStock.currentPrice > 0 &&
         _cryptoQty > 0 &&
         execPrice > 0 &&
+        isLimitPlausible &&
         (isBuy ? totalWithFee <= userState.profile.virtualBalance : _cryptoQty <= ownedQty);
 
     return Container(
@@ -142,8 +156,9 @@ class _SpotTradeSheetState extends ConsumerState<SpotTradeSheet> {
             Container(
               padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.05),
+                color: AppColors.surfaceAlt,
                 borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.outline),
               ),
               child: Row(
                 children: [
@@ -161,7 +176,7 @@ class _SpotTradeSheetState extends ConsumerState<SpotTradeSheet> {
                           'Buy Spot',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            color: isBuy ? Colors.white : Colors.white54,
+                            color: isBuy ? Colors.white : AppColors.subtle,
                           ),
                         ),
                       ),
@@ -181,7 +196,7 @@ class _SpotTradeSheetState extends ConsumerState<SpotTradeSheet> {
                           'Sell Spot',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            color: !isBuy ? Colors.white : Colors.white54,
+                            color: !isBuy ? Colors.white : AppColors.subtle,
                           ),
                         ),
                       ),
@@ -201,7 +216,7 @@ class _SpotTradeSheetState extends ConsumerState<SpotTradeSheet> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 10),
                       decoration: BoxDecoration(
-                        color: !isLimit ? AppColors.primary.withValues(alpha: 0.15) : AppColors.surface,
+                        color: !isLimit ? AppColors.primary.withValues(alpha: 0.15) : AppColors.surfaceAlt,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: !isLimit ? AppColors.primary : AppColors.outline),
                       ),
@@ -211,7 +226,7 @@ class _SpotTradeSheetState extends ConsumerState<SpotTradeSheet> {
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 13,
-                          color: !isLimit ? AppColors.primary : Colors.white54,
+                          color: !isLimit ? AppColors.primary : AppColors.subtle,
                         ),
                       ),
                     ),
@@ -224,7 +239,7 @@ class _SpotTradeSheetState extends ConsumerState<SpotTradeSheet> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 10),
                       decoration: BoxDecoration(
-                        color: isLimit ? AppColors.warning.withValues(alpha: 0.15) : AppColors.surface,
+                        color: isLimit ? AppColors.warning.withValues(alpha: 0.15) : AppColors.surfaceAlt,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: isLimit ? AppColors.warning : AppColors.outline),
                       ),
@@ -239,7 +254,7 @@ class _SpotTradeSheetState extends ConsumerState<SpotTradeSheet> {
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 13,
-                              color: isLimit ? AppColors.warning : Colors.white54,
+                              color: isLimit ? AppColors.warning : AppColors.subtle,
                             ),
                           ),
                         ],
@@ -256,20 +271,22 @@ class _SpotTradeSheetState extends ConsumerState<SpotTradeSheet> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Target Limit Price', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
-                  Text('Market: ${formatter.format(widget.stock.currentPrice)}', style: const TextStyle(color: Colors.white38, fontSize: 12)),
+                  Text('Target Limit Price', style: TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w600)),
+                  Text('Market: ${formatter.format(widget.stock.currentPrice)}', style: TextStyle(color: AppColors.subtle, fontSize: 12)),
                 ],
               ),
               const SizedBox(height: 8),
               TextField(
                 controller: _targetPriceController,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: AppColors.textPrimary),
                 decoration: InputDecoration(
                   prefixText: '$currSym ',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.outline)),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.outline)),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.warning, width: 1.5)),
                   filled: true,
-                  fillColor: AppColors.surface,
+                  fillColor: AppColors.surfaceAlt,
                 ),
                 onChanged: (_) => setState(() {}),
               ),
@@ -292,7 +309,7 @@ class _SpotTradeSheetState extends ConsumerState<SpotTradeSheet> {
               children: [
                 Text(
                   isBuy ? 'Available: ${formatter.format(userState.profile.virtualBalance)}' : 'Available: $ownedQty ${widget.stock.symbol}',
-                  style: const TextStyle(color: Colors.white70, fontSize: 13),
+                  style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
                 ),
                 GestureDetector(
                   onTap: () => setState(() {
@@ -316,14 +333,17 @@ class _SpotTradeSheetState extends ConsumerState<SpotTradeSheet> {
             TextField(
               controller: _inputController,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: AppColors.textPrimary),
               decoration: InputDecoration(
                 labelText: _isCryptoInput ? 'Amount (${widget.stock.symbol})' : 'Amount ($currSym)',
-                labelStyle: const TextStyle(fontSize: 16),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                labelStyle: TextStyle(fontSize: 16, color: AppColors.subtle),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.outline)),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: AppColors.outline)),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: isBuy ? AppColors.profit : AppColors.loss, width: 1.5)),
                 filled: true,
-                fillColor: AppColors.surface,
+                fillColor: AppColors.surfaceAlt,
                 suffixText: _isCryptoInput ? widget.stock.symbol : currSym,
+                suffixStyle: TextStyle(color: AppColors.subtle, fontWeight: FontWeight.bold),
               ),
               onChanged: (_) => setState(() {}),
             ),
@@ -332,7 +352,7 @@ class _SpotTradeSheetState extends ConsumerState<SpotTradeSheet> {
                 padding: const EdgeInsets.only(top: 8.0, left: 4),
                 child: Text(
                   _isCryptoInput ? '≈ ${formatter.format(_fiatAmount)}' : '≈ $_cryptoQty ${widget.stock.symbol}',
-                  style: const TextStyle(color: Colors.white54),
+                  style: TextStyle(color: AppColors.subtle),
                 ),
               ),
             const SizedBox(height: 16),
@@ -349,7 +369,7 @@ class _SpotTradeSheetState extends ConsumerState<SpotTradeSheet> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: AppColors.surface,
+                color: AppColors.surfaceAlt,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: AppColors.outline),
               ),
@@ -358,26 +378,26 @@ class _SpotTradeSheetState extends ConsumerState<SpotTradeSheet> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Total Value', style: TextStyle(color: Colors.white70)),
-                      Text(formatter.format(totalCost), style: const TextStyle(fontWeight: FontWeight.bold)),
+                      Text('Total Value', style: TextStyle(color: AppColors.textSecondary)),
+                      Text(formatter.format(totalCost), style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
                     ],
                   ),
                   const SizedBox(height: 8),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Est. Trading Fee (0.1%)', style: TextStyle(color: Colors.white38, fontSize: 12)),
-                      Text(formatter.format(fee), style: const TextStyle(color: Colors.white38, fontSize: 12)),
+                      Text('Est. Trading Fee (0.1%)', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                      Text(formatter.format(fee), style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
                     ],
                   ),
-                  const Divider(color: Colors.white10, height: 16),
+                  Divider(color: AppColors.outline, height: 16),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(isBuy ? 'Total Payable' : 'Total Receivable', style: const TextStyle(fontWeight: FontWeight.bold)),
+                      Text(isBuy ? 'Total Payable' : 'Total Receivable', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
                       Text(
                         formatter.format(totalWithFee),
-                        style: TextStyle(fontWeight: FontWeight.w900, color: isBuy ? AppColors.profit : Colors.white, fontSize: 16),
+                        style: TextStyle(fontWeight: FontWeight.w900, color: isBuy ? AppColors.profit : AppColors.textPrimary, fontSize: 16),
                       ),
                     ],
                   ),
@@ -399,13 +419,38 @@ class _SpotTradeSheetState extends ConsumerState<SpotTradeSheet> {
                 ),
               )
             else if (_inputVal > 0 && isBuy && totalWithFee > userState.profile.virtualBalance)
-              const Padding(
-                padding: EdgeInsets.only(top: 12),
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
                 child: Row(
                   children: [
-                    Icon(Icons.error_outline, color: AppColors.loss, size: 16),
-                    SizedBox(width: 8),
-                    Text('Insufficient available balance', style: TextStyle(color: AppColors.loss, fontSize: 13, fontWeight: FontWeight.w600)),
+                    const Icon(Icons.error_outline, color: AppColors.loss, size: 16),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text('Insufficient available balance', style: TextStyle(color: AppColors.loss, fontSize: 13, fontWeight: FontWeight.w600)),
+                    ),
+                    InkWell(
+                      onTap: () => ZeroBalanceRefillSheet.show(context),
+                      borderRadius: BorderRadius.circular(6),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1E2330),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: const Color(0xFF2E374D), width: 1),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.play_arrow_rounded, color: Color(0xFF00C087), size: 14),
+                            SizedBox(width: 4),
+                            Text(
+                              'Free Refill',
+                              style: TextStyle(color: Color(0xFF00C087), fontSize: 11, fontWeight: FontWeight.w700),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               )
@@ -420,7 +465,32 @@ class _SpotTradeSheetState extends ConsumerState<SpotTradeSheet> {
                   ],
                 ),
               ),
-            if (!isMarketOnline || !liveStock.isLive) ...[
+            if (isLimit && !isLimitPlausible) ...[
+              Container(
+                margin: const EdgeInsets.only(bottom: 14),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: AppColors.loss.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.loss.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.warning_amber_rounded, color: AppColors.loss, size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        isBuy
+                            ? 'Limit price cannot be lower than 10% of market price.'
+                            : 'Limit price cannot exceed 10x current market price.',
+                        style: const TextStyle(color: AppColors.loss, fontSize: 12, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            if (!isMarketOnline || !liveStock.isLive || liveStock.currentPrice <= 0) ...[
               Container(
                 margin: const EdgeInsets.only(bottom: 14),
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -482,22 +552,43 @@ class _SpotTradeSheetState extends ConsumerState<SpotTradeSheet> {
                         }
                       }
                     }
-                  : null,
+                  : (isBuy && totalWithFee > userState.profile.virtualBalance
+                      ? () => ZeroBalanceRefillSheet.show(context)
+                      : null),
               style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(56),
-                backgroundColor: (!isMarketOnline || !liveStock.isLive)
+                backgroundColor: (!isMarketOnline || !liveStock.isLive || liveStock.currentPrice <= 0)
                     ? const Color(0xFF2B3139)
-                    : (isLimit ? AppColors.warning : (isBuy ? AppColors.profit : AppColors.loss)),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    : (canExecute
+                        ? (isLimit ? AppColors.warning : (isBuy ? AppColors.profit : AppColors.loss))
+                        : (isBuy && totalWithFee > userState.profile.virtualBalance
+                            ? const Color(0xFF1E2330)
+                            : const Color(0xFF2B3139))),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: (!canExecute && isBuy && totalWithFee > userState.profile.virtualBalance)
+                      ? const BorderSide(color: Color(0xFF2E374D), width: 1.2)
+                      : BorderSide.none,
+                ),
               ),
               child: Text(
-                (!isMarketOnline || !liveStock.isLive)
+                (!isMarketOnline || !liveStock.isLive || liveStock.currentPrice <= 0)
                     ? 'Syncing Live Price...'
-                    : (isLimit ? 'Place Limit ${isBuy ? "Buy" : "Sell"}' : (isBuy ? 'Confirm Buy Spot' : 'Confirm Sell Spot')),
+                    : (isLimit && !isLimitPlausible
+                        ? 'Limit Price Out of Range'
+                        : (canExecute
+                            ? (isLimit ? 'Place Limit ${isBuy ? "Buy" : "Sell"}' : (isBuy ? 'Confirm Buy Spot' : 'Confirm Sell Spot'))
+                            : (isBuy && totalWithFee > userState.profile.virtualBalance
+                                ? 'Balance Empty — Tap for Free Refill'
+                                : (isLimit ? 'Place Limit ${isBuy ? "Buy" : "Sell"}' : (isBuy ? 'Confirm Buy Spot' : 'Confirm Sell Spot'))))),
                 style: TextStyle(
                   fontWeight: FontWeight.w900,
-                  fontSize: 16,
-                  color: (!isMarketOnline || !liveStock.isLive) ? Colors.white38 : (isLimit ? Colors.black : Colors.white),
+                  fontSize: 15,
+                  color: canExecute
+                      ? (isLimit ? Colors.black : Colors.white)
+                      : (isBuy && totalWithFee > userState.profile.virtualBalance
+                          ? const Color(0xFF00C087)
+                          : AppColors.subtle),
                 ),
               ),
             ),
@@ -523,8 +614,12 @@ class _SpotTradeSheetState extends ConsumerState<SpotTradeSheet> {
       onTap: () => _setPercentage(pct, state),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(8)),
-        child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceAlt,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.outline),
+        ),
+        child: Text(label, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.textPrimary)),
       ),
     );
   }

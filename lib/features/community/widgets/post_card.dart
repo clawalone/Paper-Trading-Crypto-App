@@ -1,5 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -8,6 +8,7 @@ import '../../../core/app_theme.dart';
 import '../../../core/coin_icon.dart';
 import '../../../data/community_provider.dart';
 import '../../../data/models.dart';
+import '../../../core/avatar_helper.dart';
 import '../../futures/futures_pro_screen.dart';
 import '../../stock_detail/stock_detail_screen.dart';
 
@@ -50,7 +51,7 @@ class PostCard extends ConsumerWidget {
     }
   }
 
-  void _showPostOptionsMenu(BuildContext context) {
+  void _showPostOptionsMenu(BuildContext context, WidgetRef ref) {
     final currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
     final currentUserEmail = FirebaseAuth.instance.currentUser?.email ?? '';
 
@@ -96,18 +97,245 @@ class PostCard extends ConsumerWidget {
                 leading: const Icon(Icons.flag_outlined, color: AppColors.subtle, size: 22),
                 title: Text(
                   'Report post',
-                  style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 15),
+                  style: GoogleFonts.inter(color: AppColors.textPrimary, fontWeight: FontWeight.w500, fontSize: 15),
                 ),
                 onTap: () {
                   Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Post reported')),
-                  );
+                  _showReportDialog(context, ref);
                 },
               ),
+              if (!canDelete && post.authorId.isNotEmpty) ...[
+                ListTile(
+                  leading: const Icon(Icons.block_rounded, color: AppColors.loss, size: 22),
+                  title: Text(
+                    'Block @${post.authorName}',
+                    style: GoogleFonts.inter(color: AppColors.loss, fontWeight: FontWeight.w600, fontSize: 15),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _confirmBlockUser(context, ref);
+                  },
+                ),
+              ],
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  void _showReportDialog(BuildContext context, WidgetRef ref) {
+    String selectedReason = 'Spam or Scam';
+    final reasons = [
+      'Spam or Scam',
+      'Harassment or Abusive Behavior',
+      'Inappropriate / Adult Content',
+      'Misleading Advice / Market Manipulation',
+      'Hate Speech or Discrimination',
+      'Other',
+    ];
+    final detailsController = TextEditingController();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          return Padding(
+            padding: EdgeInsets.only(
+              left: 20,
+              right: 20,
+              top: 16,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: AppColors.muted,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                Row(
+                  children: [
+                    const Icon(Icons.flag_rounded, color: Color(0xFFF59E0B), size: 22),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Report Post',
+                      style: GoogleFonts.inter(
+                        color: AppColors.textPrimary,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Help us keep the community safe. Why are you reporting this setup or message?',
+                  style: GoogleFonts.inter(color: AppColors.subtle, fontSize: 13),
+                ),
+                const SizedBox(height: 16),
+                ...reasons.map((r) {
+                  final isChosen = selectedReason == r;
+                  return InkWell(
+                    onTap: () => setSheetState(() => selectedReason = r),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        children: [
+                          Icon(
+                            isChosen ? Icons.radio_button_checked : Icons.radio_button_off,
+                            color: isChosen ? const Color(0xFF2196F3) : AppColors.subtle,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              r,
+                              style: GoogleFonts.inter(
+                                color: isChosen ? AppColors.textPrimary : AppColors.textSecondary,
+                                fontWeight: isChosen ? FontWeight.w600 : FontWeight.w400,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: detailsController,
+                  maxLines: 2,
+                  style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 13),
+                  decoration: InputDecoration(
+                    hintText: 'Additional details (optional)...',
+                    hintStyle: GoogleFonts.inter(color: AppColors.subtle, fontSize: 13),
+                    filled: true,
+                    fillColor: AppColors.surfaceAlt,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: AppColors.outline),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: AppColors.outline),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: Color(0xFF2196F3), width: 1.5),
+                    ),
+                    contentPadding: const EdgeInsets.all(12),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      ref.read(communityProvider.notifier).reportContent(
+                        postId: post.id,
+                        authorId: post.authorId,
+                        reason: selectedReason,
+                        details: detailsController.text.trim(),
+                      );
+                      Navigator.pop(sheetCtx);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Thank you. This post has been reported for moderation review.',
+                            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                          ),
+                          backgroundColor: const Color(0xFF1E2329),
+                          behavior: SnackBarBehavior.floating,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                      );
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2196F3),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: Text(
+                      'Submit Report',
+                      style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 15),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _confirmBlockUser(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: AppColors.outline),
+        ),
+        title: Text(
+          'Block @${post.authorName}?',
+          style: GoogleFonts.inter(color: AppColors.textPrimary, fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          'You will no longer see posts or comments from this trader on your timeline. You can unblock them at any time.',
+          style: GoogleFonts.inter(color: AppColors.subtle, fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.inter(color: AppColors.textSecondary),
+            ),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              ref.read(communityProvider.notifier).blockUser(post.authorId);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    '@${post.authorName} has been blocked.',
+                    style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                  ),
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              );
+            },
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.loss,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            ),
+            child: Text(
+              'Block',
+              style: GoogleFonts.inter(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -119,11 +347,11 @@ class PostCard extends ConsumerWidget {
         backgroundColor: AppColors.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: const BorderSide(color: AppColors.outline),
+          side: BorderSide(color: AppColors.outline),
         ),
         title: Text(
           'Delete post?',
-          style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.bold),
+          style: GoogleFonts.inter(color: AppColors.textPrimary, fontWeight: FontWeight.bold),
         ),
         content: Text(
           'This can’t be undone and it will be removed from your timeline.',
@@ -134,7 +362,7 @@ class PostCard extends ConsumerWidget {
             onPressed: () => Navigator.pop(ctx),
             child: Text(
               'Cancel',
-              style: GoogleFonts.inter(color: Colors.white),
+              style: GoogleFonts.inter(color: AppColors.textSecondary),
             ),
           ),
           FilledButton(
@@ -168,7 +396,7 @@ class PostCard extends ConsumerWidget {
     final isOwnPost = currentUserId.isNotEmpty && (post.authorId == currentUserId || post.authorId == 'current_user');
 
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppColors.background,
         border: Border(
           bottom: BorderSide(color: AppColors.outline, width: 0.8),
@@ -184,22 +412,12 @@ class PostCard extends ConsumerWidget {
             children: [
               GestureDetector(
                 onTap: onProfileTap,
-                child: Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AppColors.outline, width: 1),
-                  ),
-                  padding: const EdgeInsets.all(2.5),
-                  child: ClipOval(
-                    child: Image.network(
-                      post.authorAvatar,
-                      fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => const Icon(Icons.person, color: AppColors.subtle, size: 20),
-                    ),
-                  ),
+                child: AppAvatar(
+                  avatarUrl: post.authorAvatar,
+                  size: 38,
+                  fallbackName: post.authorName,
+                  backgroundColor: AppColors.surface,
+                  border: Border.all(color: AppColors.outline, width: 1),
                 ),
               ),
               const SizedBox(width: 10),
@@ -212,7 +430,7 @@ class PostCard extends ConsumerWidget {
                         child: Text(
                           post.authorName,
                           style: GoogleFonts.inter(
-                            color: Colors.white,
+                            color: AppColors.textPrimary,
                             fontWeight: FontWeight.w700,
                             fontSize: 15,
                           ),
@@ -256,17 +474,23 @@ class PostCard extends ConsumerWidget {
                     alignment: Alignment.center,
                     padding: const EdgeInsets.symmetric(horizontal: 14),
                     decoration: BoxDecoration(
-                      color: isFollowing ? Colors.transparent : const Color(0xFFEFF3F4),
+                      color: isFollowing
+                          ? Colors.transparent
+                          : (AppColors.isDarkMode ? const Color(0xFFEFF3F4) : AppColors.surfaceAlt),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: isFollowing ? const Color(0xFF536471) : Colors.transparent,
+                        color: isFollowing
+                            ? (AppColors.isDarkMode ? const Color(0xFF536471) : AppColors.outline)
+                            : (AppColors.isDarkMode ? Colors.transparent : AppColors.outline),
                         width: 1,
                       ),
                     ),
                     child: Text(
                       isFollowing ? 'Following' : 'Follow',
                       style: GoogleFonts.inter(
-                        color: isFollowing ? const Color(0xFFEFF3F4) : const Color(0xFF0F1419),
+                        color: isFollowing
+                            ? (AppColors.isDarkMode ? const Color(0xFFEFF3F4) : AppColors.textPrimary)
+                            : const Color(0xFF0F1419),
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                         letterSpacing: -0.2,
@@ -278,7 +502,7 @@ class PostCard extends ConsumerWidget {
               const SizedBox(width: 4),
               IconButton(
                 icon: const Icon(Icons.more_horiz, color: AppColors.subtle, size: 20),
-                onPressed: () => _showPostOptionsMenu(context),
+                onPressed: () => _showPostOptionsMenu(context, ref),
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
                 visualDensity: VisualDensity.compact,
@@ -292,7 +516,7 @@ class PostCard extends ConsumerWidget {
           Text(
             post.content,
             style: GoogleFonts.inter(
-              color: Colors.white,
+              color: AppColors.textPrimary,
               fontSize: 15,
               height: 1.4,
               fontWeight: FontWeight.w400,
@@ -486,7 +710,7 @@ class PostCard extends ConsumerWidget {
                   Text(
                     '$cleanSym-PERP',
                     style: GoogleFonts.inter(
-                      color: Colors.white,
+                      color: AppColors.textPrimary,
                       fontWeight: FontWeight.w700,
                       fontSize: 13,
                     ),
@@ -523,7 +747,7 @@ class PostCard extends ConsumerWidget {
                 ],
               ),
             ),
-          const Divider(height: 1, color: AppColors.outline),
+          Divider(height: 1, color: AppColors.outline),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Row(
@@ -568,7 +792,7 @@ class PostCard extends ConsumerWidget {
         Text(
           value,
           style: GoogleFonts.inter(
-            color: isAccent ? AppColors.profit : Colors.white,
+            color: isAccent ? AppColors.profit : AppColors.textPrimary,
             fontSize: 12,
             fontWeight: FontWeight.w600,
           ),

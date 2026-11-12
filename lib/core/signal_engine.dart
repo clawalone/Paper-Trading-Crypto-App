@@ -1,5 +1,5 @@
 import 'dart:math';
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart';
 import '../data/models.dart';
 
 enum SignalAction {
@@ -119,6 +119,90 @@ class TechnicalAnalysisResult {
     required this.spotAdvice,
     required this.futuresAdvice,
     required this.compositeScore,
+  });
+}
+
+class TimeframeSignal {
+  final String label; // '15m', '1H', '4H', '1D'
+  final String trend; // 'Bullish', 'Bearish', 'Neutral'
+  final double confidence; // e.g. 85.0
+  final Color color;
+  const TimeframeSignal({
+    required this.label,
+    required this.trend,
+    required this.confidence,
+    required this.color,
+  });
+}
+
+class MarketSignalItem {
+  final Stock stock;
+  final TechnicalAnalysisResult analysis;
+  const MarketSignalItem({
+    required this.stock,
+    required this.analysis,
+  });
+}
+
+class SignalTrackRecordItem {
+  final String symbol;
+  final String type; // e.g. 'Delivery Breakout', '5x Margin Long', '10x Futures Short'
+  final double entryPrice;
+  final double exitPrice;
+  final double returnPct;
+  final bool isWin;
+  final String targetHit; // 'Target 1 Hit 🎯', 'Target 2 Hit 🎯', 'Stop Loss Hit 🛑'
+  final DateTime entryDate;
+  final DateTime date; // Exit timestamp
+  final bool isLong;
+  final int leverage;
+  final bool isStock;
+  final String currency;
+
+  const SignalTrackRecordItem({
+    required this.symbol,
+    required this.type,
+    required this.entryPrice,
+    required this.exitPrice,
+    required this.returnPct,
+    required this.isWin,
+    required this.targetHit,
+    required this.entryDate,
+    required this.date,
+    required this.isLong,
+    required this.leverage,
+    required this.isStock,
+    this.currency = 'USD',
+  });
+}
+
+class SignalTrackRecordReport {
+  final List<SignalTrackRecordItem> records;
+  final int totalTrades;
+  final int winCount;
+  final int lossCount;
+  final double winRatePct;
+  final double avgWinPct;
+  final double avgLossPct;
+  final double profitRatio;
+  final int assetsAudited;
+  final bool isLiveAudit;
+  final DateTime? periodStart;
+  final DateTime? periodEnd;
+
+  const SignalTrackRecordReport({
+    required this.records,
+    required this.totalTrades,
+    required this.winCount,
+    required this.lossCount,
+    required this.winRatePct,
+    required this.avgWinPct,
+    required this.avgLossPct,
+    required this.profitRatio,
+    required this.assetsAudited,
+    required this.isLiveAudit,
+    this.periodStart,
+    this.periodEnd,
   });
 }
 
@@ -253,7 +337,11 @@ class SignalEngine {
     final spotAdvice = _buildSpotAdvice(currentPrice, score, support, resistance, reasons, atrPct);
 
     // 8. Futures Advice (Leverage & Direction)
-    final futuresAdvice = _buildFuturesAdvice(currentPrice, score, support, resistance, reasons, atrPct);
+    final isStock = stock.symbol.endsWith('.NS') ||
+        stock.symbol.endsWith('.BO') ||
+        stock.symbol.startsWith('^') ||
+        stock.category != 'Crypto';
+    final futuresAdvice = _buildFuturesAdvice(currentPrice, score, support, resistance, reasons, atrPct, isStock: isStock);
 
     return TechnicalAnalysisResult(
       currentPrice: currentPrice,
@@ -346,8 +434,9 @@ class SignalEngine {
     double support,
     double resistance,
     List<SignalReason> reasons,
-    double atrPct,
-  ) {
+    double atrPct, {
+    bool isStock = false,
+  }) {
     // 1. Determine Bias
     final FuturesBias bias;
     if (score >= 20) {
@@ -379,6 +468,12 @@ class SignalEngine {
       leverage = 20;
       riskLevel = 'Low Volatility / Squeeze';
       leverageRationale = 'Tight consolidation detected (ATR: ${atrPct.toStringAsFixed(1)}%). 20x leverage is suitable for catching the initial breakout burst.';
+    }
+
+    if (isStock) {
+      leverage = min(leverage, 5);
+      leverage = max(leverage, 1);
+      leverageRationale = 'Stock Margin Model: Maximum regulatory intraday leverage is 5x with a 20% stop boundary.';
     }
 
     // 3. Targets and Stop Loss
@@ -449,6 +544,11 @@ class SignalEngine {
     final resistance = currentPrice * 1.05;
     const atrPct = 2.5;
 
+    final isStock = stock.symbol.endsWith('.NS') ||
+        stock.symbol.endsWith('.BO') ||
+        stock.symbol.startsWith('^') ||
+        stock.category != 'Crypto';
+
     return TechnicalAnalysisResult(
       currentPrice: currentPrice,
       rsi: isPositive ? 54.0 : 42.0,
@@ -461,19 +561,20 @@ class SignalEngine {
       support: support,
       resistance: resistance,
       spotAdvice: _buildSpotAdvice(currentPrice, score, support, resistance, reasons, atrPct),
-      futuresAdvice: _buildFuturesAdvice(currentPrice, score, support, resistance, reasons, atrPct),
+      futuresAdvice: _buildFuturesAdvice(currentPrice, score, support, resistance, reasons, atrPct, isStock: isStock),
       compositeScore: score,
     );
   }
 
   // ── Helper Math Calculations ──────────────────────────────────────────────
 
-  static double _calculateRSI(List<double> closes, int period) {
-    if (closes.length <= period) return 50.0;
+  static List<double> _calculateRsiSeries(List<double> closes, int period) {
+    final len = closes.length;
+    final out = List<double>.filled(len, 50.0);
+    if (len <= period) return out;
 
     double gains = 0;
     double losses = 0;
-
     for (int i = 1; i <= period; i++) {
       final diff = closes[i] - closes[i - 1];
       if (diff >= 0) {
@@ -485,32 +586,50 @@ class SignalEngine {
 
     double avgGain = gains / period;
     double avgLoss = losses / period;
+    out[period] = avgLoss == 0 ? 100.0 : 100.0 - (100.0 / (1.0 + (avgGain / avgLoss)));
 
-    for (int i = period + 1; i < closes.length; i++) {
+    for (int i = period + 1; i < len; i++) {
       final diff = closes[i] - closes[i - 1];
       final gain = diff > 0 ? diff : 0.0;
       final loss = diff < 0 ? diff.abs() : 0.0;
 
       avgGain = (avgGain * (period - 1) + gain) / period;
       avgLoss = (avgLoss * (period - 1) + loss) / period;
+      out[i] = avgLoss == 0 ? 100.0 : 100.0 - (100.0 / (1.0 + (avgGain / avgLoss)));
+    }
+    return out;
+  }
+
+  static double _calculateRSI(List<double> closes, int period) {
+    if (closes.length <= period) return 50.0;
+    return _calculateRsiSeries(closes, period).last;
+  }
+
+  static List<double> _calculateEmaSeries(List<double> closes, int period) {
+    final len = closes.length;
+    if (len == 0) return const [];
+    if (len < period) return List<double>.from(closes);
+
+    final out = List<double>.filled(len, 0.0);
+    double sum = 0.0;
+    for (int i = 0; i < period; i++) {
+      sum += closes[i];
+      out[i] = sum / (i + 1);
     }
 
-    if (avgLoss == 0) return 100.0;
-    final rs = avgGain / avgLoss;
-    return 100.0 - (100.0 / (1.0 + rs));
+    final k = 2.0 / (period + 1);
+    double ema = out[period - 1];
+    for (int i = period; i < len; i++) {
+      ema = (closes[i] * k) + (ema * (1.0 - k));
+      out[i] = ema;
+    }
+    return out;
   }
 
   static double _calculateEMA(List<double> closes, int period) {
     if (closes.isEmpty) return 0.0;
     if (closes.length < period) return closes.last;
-
-    final k = 2.0 / (period + 1);
-    double ema = closes.sublist(0, period).reduce((a, b) => a + b) / period;
-
-    for (int i = period; i < closes.length; i++) {
-      ema = (closes[i] * k) + (ema * (1.0 - k));
-    }
-    return ema;
+    return _calculateEmaSeries(closes, period).last;
   }
 
   static ({double line, double signal, double hist}) _calculateMACD(List<double> closes) {
@@ -525,14 +644,15 @@ class SignalEngine {
     return (line: line, signal: signal, hist: hist);
   }
 
-  static double _calculateAtrPct(List<StockCandle> candles, double currentPrice) {
-    if (candles.length < 5 || currentPrice <= 0) return 2.5;
+  static double _calculateAtrPctAt(List<StockCandle> candles, int endIdx, double currentPrice) {
+    if (endIdx < 4 || candles.length < 5 || currentPrice <= 0) return 2.5;
 
+    final available = endIdx + 1;
+    final count = min(14, available);
+    final start = available - count;
     double trSum = 0;
-    final count = min(14, candles.length);
-    final start = candles.length - count;
 
-    for (int i = start; i < candles.length; i++) {
+    for (int i = start; i <= endIdx; i++) {
       final c = candles[i];
       final prevClose = i > 0 ? candles[i - 1].close : c.open;
       final tr = max(c.high - c.low, max((c.high - prevClose).abs(), (c.low - prevClose).abs()));
@@ -541,5 +661,362 @@ class SignalEngine {
 
     final atr = trSum / count;
     return ((atr / currentPrice) * 100.0).clamp(0.5, 12.0);
+  }
+
+  static double _calculateAtrPct(List<StockCandle> candles, double currentPrice) {
+    if (candles.isEmpty) return 2.5;
+    return _calculateAtrPctAt(candles, candles.length - 1, currentPrice);
+  }
+
+  /// Estimates trend alignment across 15m, 1H, 4H, and 1D timeframes
+  static List<TimeframeSignal> getMultiTimeframeConfluence(Stock stock, TechnicalAnalysisResult current) {
+    final score = current.compositeScore;
+    final rsi = current.rsi;
+    final chg = stock.changePercentage;
+
+    // 15m (Short-term momentum)
+    final tf15Bullish = (rsi > 42 && rsi < 72) || chg > 1.0;
+    final tf15Trend = tf15Bullish ? 'Bullish' : (rsi > 72 || chg < -1.5 ? 'Bearish' : 'Neutral');
+
+    // 1H (Current timeframe analysis)
+    final tf1hTrend = score > 15 ? 'Bullish' : (score < -15 ? 'Bearish' : 'Neutral');
+
+    // 4H (Intermediate trend - EMA 20 vs 50)
+    final tf4hTrend = current.ema20 >= current.ema50 ? 'Bullish' : 'Bearish';
+
+    // 1D (Macro trend)
+    final tf1dTrend = chg >= 0 ? (score > -20 ? 'Bullish' : 'Neutral') : (score < 20 ? 'Bearish' : 'Neutral');
+
+    return [
+      TimeframeSignal(
+        label: '15m',
+        trend: tf15Trend,
+        confidence: (current.spotAdvice.confidenceScore * 0.95).clamp(50, 98),
+        color: tf15Trend == 'Bullish'
+            ? const Color(0xFF0ECB81)
+            : (tf15Trend == 'Bearish' ? const Color(0xFFF6465D) : const Color(0xFFF0B90B)),
+      ),
+      TimeframeSignal(
+        label: '1H',
+        trend: tf1hTrend,
+        confidence: current.spotAdvice.confidenceScore,
+        color: tf1hTrend == 'Bullish'
+            ? const Color(0xFF0ECB81)
+            : (tf1hTrend == 'Bearish' ? const Color(0xFFF6465D) : const Color(0xFFF0B90B)),
+      ),
+      TimeframeSignal(
+        label: '4H',
+        trend: tf4hTrend,
+        confidence: (current.spotAdvice.confidenceScore * 1.02).clamp(50, 99),
+        color: tf4hTrend == 'Bullish' ? const Color(0xFF0ECB81) : const Color(0xFFF6465D),
+      ),
+      TimeframeSignal(
+        label: '1D',
+        trend: tf1dTrend,
+        confidence: (current.spotAdvice.confidenceScore * 0.98).clamp(50, 99),
+        color: tf1dTrend == 'Bullish'
+            ? const Color(0xFF0ECB81)
+            : (tf1dTrend == 'Bearish' ? const Color(0xFFF6465D) : const Color(0xFFF0B90B)),
+      ),
+    ];
+  }
+
+  /// Scans the entire market and ranks opportunities by signal strength
+  static List<MarketSignalItem> scanMarket(List<Stock> market) {
+    final list = <MarketSignalItem>[];
+    for (final s in market) {
+      if (s.currentPrice > 0) {
+        final analysis = analyze(s);
+        list.add(MarketSignalItem(stock: s, analysis: analysis));
+      }
+    }
+    list.sort((a, b) {
+      final scoreA = a.analysis.compositeScore.abs() * a.analysis.spotAdvice.confidenceScore;
+      final scoreB = b.analysis.compositeScore.abs() * b.analysis.spotAdvice.confidenceScore;
+      return scoreB.compareTo(scoreA);
+    });
+    return list;
+  }
+
+  /// Summarizes any list of signal executions into exact aggregate metrics.
+  static SignalTrackRecordReport summarizeTrackRecord(
+    List<SignalTrackRecordItem> records, {
+    int assetsAudited = 0,
+    bool isLiveAudit = true,
+  }) {
+    if (records.isEmpty) {
+      return SignalTrackRecordReport(
+        records: const [],
+        totalTrades: 0,
+        winCount: 0,
+        lossCount: 0,
+        winRatePct: 0.0,
+        avgWinPct: 0.0,
+        avgLossPct: 0.0,
+        profitRatio: 0.0,
+        assetsAudited: assetsAudited,
+        isLiveAudit: isLiveAudit,
+      );
+    }
+
+    final sorted = List<SignalTrackRecordItem>.from(records)
+      ..sort((a, b) => b.date.compareTo(a.date));
+
+    int winCount = 0;
+    int lossCount = 0;
+    double winSum = 0.0;
+    double lossSum = 0.0;
+    DateTime minDate = sorted.first.entryDate;
+    DateTime maxDate = sorted.first.date;
+
+    for (final rec in sorted) {
+      if (rec.isWin) {
+        winCount++;
+        winSum += rec.returnPct;
+      } else {
+        lossCount++;
+        lossSum += rec.returnPct.abs();
+      }
+      if (rec.entryDate.isBefore(minDate)) minDate = rec.entryDate;
+      if (rec.date.isAfter(maxDate)) maxDate = rec.date;
+    }
+
+    final total = sorted.length;
+    final winRatePct = (winCount / total) * 100.0;
+    final avgWinPct = winCount > 0 ? winSum / winCount : 0.0;
+    final avgLossPct = lossCount > 0 ? lossSum / lossCount : 0.0;
+    final profitRatio = avgLossPct > 0
+        ? avgWinPct / avgLossPct
+        : (avgWinPct > 0 ? avgWinPct : 0.0);
+
+    return SignalTrackRecordReport(
+      records: sorted,
+      totalTrades: total,
+      winCount: winCount,
+      lossCount: lossCount,
+      winRatePct: winRatePct,
+      avgWinPct: avgWinPct,
+      avgLossPct: avgLossPct,
+      profitRatio: profitRatio,
+      assetsAudited: assetsAudited,
+      isLiveAudit: isLiveAudit,
+      periodStart: minDate,
+      periodEnd: maxDate,
+    );
+  }
+
+  /// Runs a strict walk-forward historical backtest (zero future look-ahead)
+  /// over real OHLC candles across the given market.
+  static SignalTrackRecordReport runTrackRecordBacktest({
+    required List<Stock> market,
+    required bool isStock,
+    Map<String, List<StockCandle>>? extendedCandles,
+    String? symbolFilter,
+  }) {
+    final allTrades = <SignalTrackRecordItem>[];
+    int assetsAudited = 0;
+    bool anyLiveAsset = false;
+
+    final liveAssets = market.where((s) => s.isLive).toList();
+    final sourceAssets = liveAssets.isNotEmpty ? liveAssets : market;
+
+    for (final stock in sourceAssets) {
+      final cleanSym = stock.symbol.toUpperCase();
+      if (symbolFilter != null &&
+          symbolFilter.isNotEmpty &&
+          cleanSym != symbolFilter.toUpperCase()) {
+        continue;
+      }
+
+      final ext = extendedCandles?[cleanSym] ?? extendedCandles?[stock.symbol];
+      final candles = (ext != null && ext.length >= 55) ? ext : stock.candleHistory;
+      if (candles.length < 55) continue;
+
+      assetsAudited++;
+      if (stock.isLive || (ext != null && ext.length >= 55)) {
+        anyLiveAsset = true;
+      }
+
+      allTrades.addAll(
+        _backtestAsset(
+          symbol: cleanSym,
+          candles: candles,
+          isStock: isStock,
+          currency: stock.currency,
+        ),
+      );
+    }
+
+    return summarizeTrackRecord(
+      allTrades,
+      assetsAudited: assetsAudited,
+      isLiveAudit: anyLiveAsset,
+    );
+  }
+
+  static List<SignalTrackRecordItem> _backtestAsset({
+    required String symbol,
+    required List<StockCandle> candles,
+    required bool isStock,
+    required String currency,
+  }) {
+    final closes = candles.map((c) => c.close).toList(growable: false);
+    final rsiSeries = _calculateRsiSeries(closes, 14);
+    final ema12Series = _calculateEmaSeries(closes, 12);
+    final ema20Series = _calculateEmaSeries(closes, 20);
+    final ema26Series = _calculateEmaSeries(closes, 26);
+    final ema50Series = _calculateEmaSeries(closes, 50);
+
+    final trades = <SignalTrackRecordItem>[];
+    int i = 50;
+
+    while (i < candles.length - 3) {
+      final entryPrice = closes[i];
+      if (entryPrice <= 0) {
+        i++;
+        continue;
+      }
+
+      final rsi = rsiSeries[i];
+      final e20 = ema20Series[i];
+      final e50 = ema50Series[i];
+      final macdNow = ema12Series[i] - ema26Series[i];
+      final macdPrev = ema12Series[i - 1] - ema26Series[i - 1];
+      final mom3 = ((entryPrice - closes[i - 3]) / closes[i - 3]) * 100.0;
+      final atrPct = _calculateAtrPctAt(candles, i, entryPrice);
+
+      // Confluence setup: Trend (EMA20 vs EMA50) + expanding MACD + 3-bar momentum + non-exhausted RSI
+      final isBull = e20 > e50 &&
+          macdNow > 0 &&
+          macdNow > macdPrev &&
+          mom3 > 0.2 &&
+          rsi >= 40.0 &&
+          rsi <= 65.0 &&
+          entryPrice > e20;
+
+      final isBear = e20 < e50 &&
+          macdNow < 0 &&
+          macdNow < macdPrev &&
+          mom3 < -0.2 &&
+          rsi >= 35.0 &&
+          rsi <= 60.0 &&
+          entryPrice < e20;
+
+      if (!isBull && !isBear) {
+        i++;
+        continue;
+      }
+
+      final isLong = isBull;
+      int baseLev;
+      if (atrPct >= 4.5) {
+        baseLev = 2;
+      } else if (atrPct >= 2.8) {
+        baseLev = 5;
+      } else if (atrPct >= 1.5) {
+        baseLev = 10;
+      } else {
+        baseLev = 20;
+      }
+      if (isStock) {
+        baseLev = baseLev.clamp(1, 5);
+      }
+
+      final trendGap = (e20 - e50).abs() / entryPrice;
+      final highConviction = trendGap >= 0.008 &&
+          ((isLong && rsi <= 56.0) || (!isLong && rsi >= 44.0));
+
+      final String typeLabel;
+      final int effectiveLeverage;
+      if (isLong && trendGap < 0.006) {
+        typeLabel = isStock ? 'Delivery Breakout' : 'Spot Breakout';
+        effectiveLeverage = 1;
+      } else {
+        typeLabel = isStock
+            ? '${baseLev}x Margin ${isLong ? "Long" : "Short"}'
+            : '${baseLev}x Futures ${isLong ? "Long" : "Short"}';
+        effectiveLeverage = baseLev;
+      }
+
+      final riskPct = max(atrPct * 1.8, isStock ? 1.8 : 2.2) / 100.0;
+      final tpMult = highConviction ? 2.0 : 1.4;
+      final double targetPrice = isLong
+          ? entryPrice * (1.0 + riskPct * tpMult)
+          : entryPrice * (1.0 - riskPct * tpMult);
+      final double stopLossPrice = isLong
+          ? entryPrice * (1.0 - riskPct)
+          : entryPrice * (1.0 + riskPct);
+
+      int exitIdx = -1;
+      double exitPrice = 0.0;
+      bool isWin = false;
+      String targetHit = '';
+
+      final maxLookAhead = min(candles.length, i + 72);
+      for (int j = i + 1; j < maxLookAhead; j++) {
+        final c = candles[j];
+        if (isLong) {
+          // Conservative intrabar ordering: check stop-loss first
+          if (c.low <= stopLossPrice) {
+            exitIdx = j;
+            exitPrice = stopLossPrice;
+            isWin = false;
+            targetHit = 'Stop Loss Hit 🛑';
+            break;
+          }
+          if (c.high >= targetPrice) {
+            exitIdx = j;
+            exitPrice = targetPrice;
+            isWin = true;
+            targetHit = highConviction ? 'Target 2 Hit 🎯' : 'Target 1 Hit 🎯';
+            break;
+          }
+        } else {
+          if (c.high >= stopLossPrice) {
+            exitIdx = j;
+            exitPrice = stopLossPrice;
+            isWin = false;
+            targetHit = 'Stop Loss Hit 🛑';
+            break;
+          }
+          if (c.low <= targetPrice) {
+            exitIdx = j;
+            exitPrice = targetPrice;
+            isWin = true;
+            targetHit = highConviction ? 'Target 2 Hit 🎯' : 'Target 1 Hit 🎯';
+            break;
+          }
+        }
+      }
+
+      if (exitIdx != -1) {
+        final rawMove = isLong
+            ? (exitPrice - entryPrice) / entryPrice
+            : (entryPrice - exitPrice) / entryPrice;
+        final returnPct = rawMove * effectiveLeverage * 100.0;
+        trades.add(
+          SignalTrackRecordItem(
+            symbol: symbol,
+            type: typeLabel,
+            entryPrice: entryPrice,
+            exitPrice: exitPrice,
+            returnPct: returnPct,
+            isWin: isWin,
+            targetHit: targetHit,
+            entryDate: candles[i].date,
+            date: candles[exitIdx].date,
+            isLong: isLong,
+            leverage: effectiveLeverage,
+            isStock: isStock,
+            currency: currency,
+          ),
+        );
+        i = exitIdx + 3; // Cooldown before next setup on same asset
+      } else {
+        i++;
+      }
+    }
+
+    return trades;
   }
 }

@@ -1,12 +1,18 @@
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app_theme.dart';
 import 'app_review_manager.dart';
 import 'currency_formatters.dart';
+import 'rewarded_ad_manager.dart';
 import '../data/user_provider.dart';
 
 class DailyCheckInManager {
   static bool _hasPromptedThisSession = false;
+
+  /// Call to manually open the daily check-in dialog.
+  static void showDailyDialog(BuildContext context, WidgetRef ref) {
+    _showDailyDialog(context, ref);
+  }
 
   /// Call on Dashboard startup. If the user hasn't claimed their daily check-in today,
   /// opens a welcoming 7-day progression pop-up dialog.
@@ -28,6 +34,9 @@ class DailyCheckInManager {
   }
 
   static void _showDailyDialog(BuildContext context, WidgetRef ref) {
+    // Warm up the rewarded ad buffer immediately so the 2X ad starts instantly
+    RewardedAdManager.instance.preload();
+
     final userState = ref.read(userProvider);
     final profile = userState.profile;
     String formatCash(double usd) {
@@ -63,75 +72,89 @@ class DailyCheckInManager {
       context: context,
       barrierColor: Colors.black.withValues(alpha: 0.75),
       builder: (dialogContext) {
-        return Dialog(
+        bool isAdLoading = false;
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            final alreadyClaimed = ref.read(userProvider).hasClaimedDaily;
+            return Dialog(
           backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
           child: Container(
             constraints: const BoxConstraints(maxWidth: 420),
-            padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
             decoration: BoxDecoration(
-              color: const Color(0xFF1E2329),
+              color: AppColors.surface,
               borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: const Color(0xFF2B3139), width: 1),
-              boxShadow: const [
-                BoxShadow(
-                  color: Colors.black54,
-                  blurRadius: 16,
-                  offset: Offset(0, 8),
-                ),
-              ],
+              border: Border.all(color: AppColors.outline, width: 1),
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Header Row: Title & Streak Badge
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(10),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+              physics: const BouncingScrollPhysics(),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Header Row: Title & Streak Badge
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Text('📅', style: TextStyle(fontSize: 20)),
                       ),
-                      child: const Text('📅', style: TextStyle(fontSize: 20)),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Daily Check-In',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 19,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: -0.3,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Daily Check-In',
+                              style: TextStyle(
+                                color: AppColors.textPrimary,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -0.3,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Check in 7 consecutive days for mega rewards!',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.6),
-                              fontSize: 11.5,
+                            const SizedBox(height: 2),
+                            Text(
+                              'Check in 7 consecutive days for mega rewards!',
+                              style: TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 11.5,
+                              ),
                             ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          '🔥 ${profile.streak}',
+                          style: const TextStyle(
+                            color: Color(0xFFF59E0B),
+                            fontWeight: FontWeight.w800,
+                            fontSize: 13,
                           ),
-                        ],
+                        ),
                       ),
-                    ),
-                    Text(
-                      '🔥 ${profile.streak}',
-                      style: const TextStyle(
-                        color: Color(0xFFF59E0B),
-                        fontWeight: FontWeight.w800,
-                        fontSize: 14,
+                      const SizedBox(width: 4),
+                      IconButton(
+                        icon: Icon(Icons.close_rounded, size: 20, color: AppColors.textSecondary),
+                        onPressed: () => Navigator.pop(dialogContext),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                        splashRadius: 16,
                       ),
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
                 const SizedBox(height: 18),
 
                 // 7-DAY PROGRESSION GRID
@@ -192,91 +215,229 @@ class DailyCheckInManager {
                 ),
                 const SizedBox(height: 20),
 
-                // Action Claim Button
-                SizedBox(
-                  height: 48,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      ref.read(userProvider.notifier).claimDailyReward(
-                        customCash: todayCash,
-                        customXp: todayXp,
-                      );
-                      Navigator.pop(dialogContext);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Row(
-                            children: [
-                              const Text('🎉', style: TextStyle(fontSize: 18)),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  'Day $todayCycleDay claimed! +${formatCash(todayCash)} & +$todayXp XP added!',
-                                  style: const TextStyle(fontWeight: FontWeight.w600),
-                                ),
-                              ),
-                            ],
-                          ),
-                          backgroundColor: AppColors.profit,
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
-                      if (todayCycleDay >= 2) {
-                        AppReviewManager.checkAndPromptReview(
-                          context,
-                          ref,
-                          triggerReason: 'Day $todayCycleDay Streak Reached',
-                        );
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFF59E0B),
-                      foregroundColor: Colors.black,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                if (alreadyClaimed) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceAlt,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.outline),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Text('🔥', style: TextStyle(fontSize: 16)),
-                        const SizedBox(width: 6),
+                        const Icon(Icons.check_circle_rounded, color: Color(0xFF00C087), size: 18),
+                        const SizedBox(width: 8),
                         Text(
-                          'Claim Day $todayCycleDay (+${formatCash(todayCash)})',
+                          'Checked in for today! Streak: ${profile.streak} 🔥',
                           style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 0.2,
+                            color: Color(0xFF00C087),
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                       ],
                     ),
                   ),
-                ),
-                const SizedBox(height: 6),
-
-                // Maybe Later
-                Center(
-                  child: TextButton(
-                    onPressed: () => Navigator.pop(dialogContext),
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                      visualDensity: VisualDensity.compact,
-                    ),
-                    child: Text(
-                      'Maybe Later',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.45),
-                        fontSize: 12,
+                  const SizedBox(height: 10),
+                  Center(
+                    child: TextButton(
+                      onPressed: () => Navigator.pop(dialogContext),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      child: Text(
+                        'Close',
+                        style: TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   ),
-                ),
+                ] else ...[
+                  // Primary Action: 2X Double Video Reward
+                  SizedBox(
+                    height: 50,
+                    child: ElevatedButton(
+                      onPressed: isAdLoading
+                          ? null
+                          : () async {
+                              setDialogState(() => isAdLoading = true);
+                              final success = await RewardedAdManager.instance.playRewardedSequence(
+                                context: context,
+                                requiredAds: 1,
+                                onProgress: (current, total) {},
+                              );
+
+                              if (!dialogContext.mounted) return;
+                              setDialogState(() => isAdLoading = false);
+
+                              if (success) {
+                                ref.read(userProvider.notifier).claimDailyReward(
+                                      customCash: todayCash * 2,
+                                      customXp: todayXp * 2,
+                                    );
+                                Navigator.pop(dialogContext);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Row(
+                                      children: [
+                                        const Text('⚡', style: TextStyle(fontSize: 18)),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            'Day $todayCycleDay 2X Doubled! +${formatCash(todayCash * 2)} & +${todayXp * 2} XP added!',
+                                            style: const TextStyle(fontWeight: FontWeight.w700),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    backgroundColor: const Color(0xFF00C087),
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                                if (todayCycleDay >= 2) {
+                                  AppReviewManager.checkAndPromptReview(
+                                    context,
+                                    ref,
+                                    triggerReason: 'Day $todayCycleDay Streak Doubled',
+                                  );
+                                }
+                              } else {
+                                final lastCode = RewardedAdManager.instance.lastLoadErrorCode;
+                                final String errorMsg;
+                                if (lastCode == 3) {
+                                  errorMsg = 'No ad available right now. You can still claim your standard 1X reward below!';
+                                } else {
+                                  errorMsg = 'Ad was not completed. Reward not doubled.';
+                                }
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(errorMsg),
+                                    backgroundColor: AppColors.loss,
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              }
+                            },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFF59E0B),
+                        foregroundColor: Colors.black,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      child: isAdLoading
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.black),
+                            )
+                          : Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.play_circle_fill_rounded, size: 20, color: Colors.black),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Double to 2X (+${formatCash(todayCash * 2)})',
+                                  style: const TextStyle(
+                                    fontSize: 14.5,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 0.1,
+                                  ),
+                                ),
+                              ],
+                            ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+
+                  // Secondary Action: 1X Standard Claim (Free)
+                  SizedBox(
+                    height: 44,
+                    child: OutlinedButton(
+                      onPressed: isAdLoading
+                          ? null
+                          : () {
+                              ref.read(userProvider.notifier).claimDailyReward(
+                                    customCash: todayCash,
+                                    customXp: todayXp,
+                                  );
+                              Navigator.pop(dialogContext);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Row(
+                                    children: [
+                                      const Text('🎉', style: TextStyle(fontSize: 18)),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          'Day $todayCycleDay claimed! +${formatCash(todayCash)} & +$todayXp XP added!',
+                                          style: const TextStyle(fontWeight: FontWeight.w600),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  backgroundColor: AppColors.profit,
+                                  behavior: SnackBarBehavior.floating,
+                                ),
+                              );
+                              if (todayCycleDay >= 2) {
+                                AppReviewManager.checkAndPromptReview(
+                                  context,
+                                  ref,
+                                  triggerReason: 'Day $todayCycleDay Streak Reached',
+                                );
+                              }
+                            },
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(color: AppColors.outline, width: 1.2),
+                        foregroundColor: AppColors.textPrimary,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      child: Text(
+                        'Claim 1X (+${formatCash(todayCash)})',
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+
+                  // Maybe Later
+                  Center(
+                    child: TextButton(
+                      onPressed: isAdLoading ? null : () => Navigator.pop(dialogContext),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      child: Text(
+                        'Maybe Later',
+                        style: TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
-        );
-      },
-    );
-  }
+        ),
+      );
+    },
+  );
+},
+);
+}
 
   static Widget _buildDayCard({
     required int day,
@@ -289,14 +450,14 @@ class DailyCheckInManager {
     Color borderColor;
 
     if (isToday) {
-      cardBg = const Color(0xFF242A32);
+      cardBg = AppColors.surfaceAlt;
       borderColor = const Color(0xFFF59E0B);
     } else if (isClaimed) {
-      cardBg = const Color(0xFF14191F);
+      cardBg = AppColors.surfaceAlt.withValues(alpha: 0.5);
       borderColor = AppColors.profit.withValues(alpha: 0.4);
     } else {
-      cardBg = const Color(0xFF181C22);
-      borderColor = const Color(0xFF2B3139);
+      cardBg = AppColors.surfaceAlt;
+      borderColor = AppColors.outline;
     }
 
     return Container(
@@ -314,7 +475,7 @@ class DailyCheckInManager {
             style: TextStyle(
               color: isToday
                   ? const Color(0xFFF59E0B)
-                  : (isClaimed ? Colors.white54 : Colors.white38),
+                  : AppColors.subtle,
               fontSize: 11,
               fontWeight: FontWeight.w700,
             ),
@@ -325,14 +486,14 @@ class DailyCheckInManager {
           else if (isToday)
             const Text('💰', style: TextStyle(fontSize: 18))
           else
-            const Icon(Icons.lock_outline_rounded, color: Colors.white24, size: 18),
+            Icon(Icons.lock_outline_rounded, color: AppColors.subtle, size: 18),
           const SizedBox(height: 5),
           Text(
             '+$cashReward',
             style: TextStyle(
               color: isToday
                   ? AppColors.profit
-                  : (isClaimed ? Colors.white38 : Colors.white70),
+                  : AppColors.textPrimary,
               fontSize: 10.5,
               fontWeight: FontWeight.w800,
             ),
@@ -342,7 +503,7 @@ class DailyCheckInManager {
           Text(
             '+$xpReward XP',
             style: TextStyle(
-              color: isToday ? const Color(0xFFF59E0B) : Colors.white24,
+              color: isToday ? const Color(0xFFF59E0B) : AppColors.subtle,
               fontSize: 9,
               fontWeight: FontWeight.w700,
             ),
@@ -362,14 +523,14 @@ class DailyCheckInManager {
     Color borderColor;
 
     if (isToday) {
-      cardBg = const Color(0xFF242A32);
+      cardBg = AppColors.surfaceAlt;
       borderColor = const Color(0xFFF59E0B);
     } else if (isClaimed) {
-      cardBg = const Color(0xFF14191F);
+      cardBg = AppColors.surfaceAlt.withValues(alpha: 0.5);
       borderColor = AppColors.profit.withValues(alpha: 0.4);
     } else {
-      cardBg = const Color(0xFF181C22);
-      borderColor = const Color(0xFF2B3139);
+      cardBg = AppColors.surfaceAlt;
+      borderColor = AppColors.outline;
     }
 
     return Container(
@@ -393,7 +554,7 @@ class DailyCheckInManager {
                     Text(
                       'Day 7',
                       style: TextStyle(
-                        color: isToday ? const Color(0xFFF59E0B) : Colors.white70,
+                        color: isToday ? const Color(0xFFF59E0B) : AppColors.textPrimary,
                         fontSize: 11,
                         fontWeight: FontWeight.w800,
                       ),
@@ -420,7 +581,7 @@ class DailyCheckInManager {
                 Text(
                   '+$cashReward',
                   style: TextStyle(
-                    color: isToday ? AppColors.profit : (isClaimed ? Colors.white38 : Colors.white),
+                    color: isToday ? AppColors.profit : AppColors.textPrimary,
                     fontSize: 11,
                     fontWeight: FontWeight.w900,
                   ),
@@ -439,7 +600,7 @@ class DailyCheckInManager {
           if (isClaimed)
             const Icon(Icons.check_circle_rounded, color: AppColors.profit, size: 20)
           else if (!isToday)
-            const Icon(Icons.lock_outline_rounded, color: Colors.white24, size: 18),
+            Icon(Icons.lock_outline_rounded, color: AppColors.subtle, size: 18),
         ],
       ),
     );

@@ -4,7 +4,7 @@ import 'dart:ui';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:fl_chart/fl_chart.dart';
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
@@ -13,13 +13,16 @@ import '../../core/app_theme.dart';
 import '../../core/app_review_manager.dart';
 import '../../core/currency_formatters.dart';
 import '../../data/market_provider.dart';
+import '../../data/stock_market_provider.dart';
 import '../../data/models.dart';
 import '../../data/user_provider.dart';
+import 'stock_trade_sheet.dart';
 import '../futures/futures_trade_sheet.dart';
 import '../signals/signals_screen.dart';
 import '../../core/coin_icon.dart';
 import '../../core/trading_view_chart.dart';
 import '../../data/order_book_provider.dart';
+import 'widgets/market_session_bar.dart';
 
 enum ChartViewMode { tradingView, candle, line }
 
@@ -33,6 +36,7 @@ class StockDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
+  late String _currentSymbol;
   String _range = '1D';
   String _tvInterval = '15';
   String _chartStyle = '1';
@@ -40,6 +44,7 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
   double _chartHeight = 260.0;
   bool _isResizingChart = false;
   int _selectedTab = 0;
+  bool _initializedTab = false;
   late ZoomPanBehavior _zoomPanBehavior;
   DateTimeAxisController? _xAxisController;
   NumericAxisController? _yAxisController;
@@ -59,6 +64,7 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
   @override
   void initState() {
     super.initState();
+    _currentSymbol = widget.stockSymbol;
     _zoomPanBehavior = ZoomPanBehavior(
       enablePinching: true,
       enablePanning: true,
@@ -67,7 +73,32 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
       zoomMode: ZoomMode.xy,
     );
     _startHistoryTimeoutTimer();
-    _fetchRangeData('1D', widget.stockSymbol);
+    _fetchRangeData('1D', _currentSymbol);
+  }
+
+  void _showAssetPicker(List<Stock> market, {required bool isStock}) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => CoinPickerSheet(
+        stocks: market,
+        currentSymbol: _currentSymbol,
+        isStock: isStock,
+        onSelected: (selected) {
+          Navigator.pop(ctx);
+          if (selected.symbol == _currentSymbol) return;
+          setState(() {
+            _currentSymbol = selected.symbol;
+            _rangeCandles = null;
+            _historyTimedOut = false;
+            _initializedTab = false;
+          });
+          _startHistoryTimeoutTimer();
+          _fetchRangeData(_range, _currentSymbol);
+        },
+      ),
+    );
   }
 
   void _startHistoryTimeoutTimer() {
@@ -89,6 +120,88 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
 
   Future<void> _fetchRangeData(String range, String symbol) async {
     setState(() { _isLoadingRange = true; _range = range; });
+
+    // Check if this is a stock or index asset
+    final cleanSym = CoinIcon.cleanSymbol(symbol);
+    final isStockAsset = kStockAssets.any((m) =>
+            m.symbol.toUpperCase() == symbol.toUpperCase() ||
+            CoinIcon.cleanSymbol(m.symbol) == cleanSym) ||
+        kStockIndices.any((m) =>
+            m.symbol.toUpperCase() == symbol.toUpperCase() ||
+            CoinIcon.cleanSymbol(m.symbol) == cleanSym) ||
+        symbol.startsWith('^') ||
+        symbol.endsWith('.NS') ||
+        symbol.endsWith('.BO');
+
+    if (isStockAsset) {
+      String interval = '15m';
+      String yRange = '1d';
+      switch(range) {
+        case '1D': interval = '15m'; yRange = '1d'; break;
+        case '1W': interval = '60m'; yRange = '5d'; break;
+        case '1M': interval = '1d'; yRange = '1mo'; break;
+        case '1Y': interval = '1wk'; yRange = '1y'; break;
+        case '5Y': interval = '1mo'; yRange = '5y'; break;
+      }
+      try {
+        final uri = Uri.parse(
+          'https://query1.finance.yahoo.com/v8/finance/chart/${Uri.encodeComponent(symbol)}?interval=$interval&range=$yRange',
+        );
+        final res = await http.get(
+          uri,
+          headers: {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'},
+        ).timeout(const Duration(seconds: 5));
+
+        if (res.statusCode == 200) {
+          final json = jsonDecode(res.body) as Map<String, dynamic>;
+          final data = json['chart']?['result']?[0];
+          if (data != null) {
+            final timestamps = (data['timestamp'] as List?)?.cast<int>() ?? [];
+            final indicators = data['indicators']?['quote'] as List?;
+            final quote = (indicators != null && indicators.isNotEmpty) ? indicators[0] as Map<String, dynamic> : null;
+            if (quote != null && timestamps.isNotEmpty) {
+              final opens = (quote['open'] as List?) ?? [];
+              final highs = (quote['high'] as List?) ?? [];
+              final lows = (quote['low'] as List?) ?? [];
+              final closes = (quote['close'] as List?) ?? [];
+              final volumes = (quote['volume'] as List?) ?? [];
+
+              final List<StockCandle> candles = [];
+              final count = min(timestamps.length, closes.length);
+              for (int i = 0; i < count; i++) {
+                final c = (closes[i] as num?)?.toDouble();
+                if (c == null || c.isNaN) continue;
+                final o = (opens.length > i && opens[i] != null) ? (opens[i] as num).toDouble() : c;
+                final h = (highs.length > i && highs[i] != null) ? (highs[i] as num).toDouble() : max(o, c);
+                final l = (lows.length > i && lows[i] != null) ? (lows[i] as num).toDouble() : min(o, c);
+                final v = (volumes.length > i && volumes[i] != null) ? (volumes[i] as num).toDouble() : 100000.0;
+                final dt = DateTime.fromMillisecondsSinceEpoch(timestamps[i] * 1000);
+
+                candles.add(StockCandle(
+                  date: dt,
+                  open: o,
+                  high: h,
+                  low: l,
+                  close: c,
+                  volume: v,
+                ));
+              }
+              if (candles.isNotEmpty && mounted && _currentSymbol == symbol) {
+                setState(() {
+                  _rangeCandles = candles;
+                  _isLoadingRange = false;
+                  _historyTimedOut = false;
+                });
+                return;
+              }
+            }
+          }
+        }
+      } catch (_) {}
+      if (mounted && _currentSymbol == symbol) setState(() { _isLoadingRange = false; });
+      return;
+    }
+
     String interval = '15m';
     int limit = 96;
     switch(range) {
@@ -98,7 +211,6 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
       case '1Y': interval = '1d'; limit = 365; break;
       case '5Y': interval = '1w'; limit = 260; break;
     }
-    final cleanSym = symbol.toUpperCase().replaceAll('USDT', '');
     final pair = '${cleanSym}USDT';
     for (final host in _binanceHosts) {
       try {
@@ -116,7 +228,7 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
             volume: double.parse(d[5].toString()),
           )).toList();
           if (candles.isNotEmpty) {
-            if (mounted) {
+            if (mounted && _currentSymbol == symbol) {
               setState(() {
                 _rangeCandles = candles;
                 _isLoadingRange = false;
@@ -128,7 +240,16 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
         }
       } catch (_) {}
     }
-    if (mounted) setState(() { _isLoadingRange = false; });
+    if (mounted && _currentSymbol == symbol) setState(() { _isLoadingRange = false; });
+  }
+
+  String _formatStockOrCryptoPrice(double price, Stock stock, AppCurrencyFormatter formatter) {
+    if (stock.isStock) {
+      final String sym = stock.currency == 'INR' ? '₹' : (stock.currency == 'USD' ? '\$' : stock.currency);
+      final fmt = NumberFormat(price >= 100 ? '#,##0.00' : '#,##0.00##', 'en_US');
+      return '$sym${fmt.format(price)}';
+    }
+    return formatter.format(price);
   }
 
   /// Returns a round interval that gives ~5 gridlines across [lo..hi].
@@ -153,38 +274,108 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final market = ref.watch(marketProvider);
+    final cryptoMarket = ref.watch(marketProvider);
+    final stockMarket = ref.watch(stockMarketProvider);
+    final indicesMarket = ref.watch(stockIndicesProvider);
     final userState = ref.watch(userProvider);
-    final cleanTarget = CoinIcon.cleanSymbol(widget.stockSymbol);
-    final stock = market.firstWhere(
+    final cleanTarget = CoinIcon.cleanSymbol(_currentSymbol);
+
+    final bool isTargetingStock = kStockAssets.any((m) =>
+            m.symbol.toUpperCase() == _currentSymbol.toUpperCase() ||
+            CoinIcon.cleanSymbol(m.symbol) == cleanTarget) ||
+        kStockIndices.any((m) =>
+            m.symbol.toUpperCase() == _currentSymbol.toUpperCase() ||
+            CoinIcon.cleanSymbol(m.symbol) == cleanTarget) ||
+        _currentSymbol.startsWith('^') ||
+        _currentSymbol.endsWith('.NS') ||
+        _currentSymbol.endsWith('.BO');
+
+    final allMarket = isTargetingStock
+        ? [...indicesMarket, ...stockMarket, ...cryptoMarket]
+        : [...cryptoMarket, ...stockMarket, ...indicesMarket];
+
+    final cleanRaw = _currentSymbol.toUpperCase().replaceAll('^', '');
+
+    final stock = allMarket.firstWhere(
       (s) {
+        if (s.symbol.toUpperCase() == _currentSymbol.toUpperCase()) return true;
+        if (s.symbol.toUpperCase().replaceAll('^', '') == cleanRaw) return true;
         final cleanS = CoinIcon.cleanSymbol(s.symbol);
-        if (s.symbol.toUpperCase() == widget.stockSymbol.toUpperCase()) return true;
         if (cleanS == cleanTarget) return true;
+        if (cleanS.replaceAll('^', '') == cleanRaw) return true;
         if (cleanS.replaceAll('1000', '') == cleanTarget.replaceAll('1000', '')) return true;
         if (s.name.toUpperCase() == cleanTarget) return true;
-        if (s.symbol.toUpperCase().startsWith(cleanTarget)) return true;
+        if (s.name.toUpperCase() == _currentSymbol.toUpperCase()) return true;
+        if (cleanS.replaceAll('.NS', '') == cleanTarget.replaceAll('.NS', '')) return true;
         return false;
       },
-      orElse: () => market.isNotEmpty ? market.first : const Stock(
-        symbol: 'BTCUSDT',
-        name: 'Bitcoin',
-        category: 'Crypto',
-        currentPrice: 0.0,
-        previousClose: 0.0,
-        dayHigh: 0.0,
-        dayLow: 0.0,
-        volume: 0,
-        history: [],
-        candleHistory: [],
-        about: '',
-        supply: 0,
-        rank: 1,
-      ),
+      orElse: () {
+        // Fallback: check kStockIndices and kStockAssets definitions
+        final allMeta = [...kStockIndices, ...kStockAssets];
+        final meta = allMeta.cast<StockAssetMeta?>().firstWhere(
+          (m) => m != null && (
+            m.symbol.toUpperCase() == _currentSymbol.toUpperCase() ||
+            m.symbol.toUpperCase().replaceAll('^', '') == cleanRaw ||
+            CoinIcon.cleanSymbol(m.symbol) == cleanTarget
+          ),
+          orElse: () => null,
+        );
+        if (meta != null) {
+          return Stock(
+            symbol: meta.symbol,
+            name: meta.name,
+            category: meta.category,
+            currentPrice: meta.defaultPrice,
+            previousClose: meta.defaultPrice * 0.998,
+            dayHigh: meta.defaultPrice * 1.01,
+            dayLow: meta.defaultPrice * 0.99,
+            volume: 10000000,
+            history: [meta.defaultPrice * 0.995, meta.defaultPrice],
+            candleHistory: const [],
+            about: meta.about,
+            supply: 10000000,
+            rank: 99,
+            isStock: true,
+            currency: meta.currency,
+          );
+        }
+        final isIndianFallback = _currentSymbol.endsWith('.NS') || _currentSymbol.endsWith('.BO');
+        final isIndexFallback = _currentSymbol.startsWith('^') || _currentSymbol == 'GSPC' || _currentSymbol == 'IXIC' || _currentSymbol == 'DJI';
+        final fallbackPrice = isIndexFallback ? 5000.0 : 100.0;
+        final fallbackName = _currentSymbol == '^GSPC' || _currentSymbol == 'GSPC'
+            ? 'S&P 500'
+            : (_currentSymbol == '^IXIC' || _currentSymbol == 'IXIC'
+                ? 'NASDAQ'
+                : (_currentSymbol == '^DJI' || _currentSymbol == 'DJI' ? 'Dow Jones' : _currentSymbol));
+        return Stock(
+          symbol: _currentSymbol,
+          name: fallbackName,
+          category: isIndexFallback ? 'Indices' : 'Asset',
+          currentPrice: fallbackPrice,
+          previousClose: fallbackPrice * 0.998,
+          dayHigh: fallbackPrice * 1.01,
+          dayLow: fallbackPrice * 0.99,
+          volume: 1000000,
+          history: [fallbackPrice * 0.995, fallbackPrice],
+          candleHistory: const [],
+          about: '',
+          supply: 0,
+          rank: 1,
+          isStock: isTargetingStock,
+          currency: isIndianFallback ? 'INR' : 'USD',
+        );
+      },
     );
     final formatter = AppCurrencyFormatter(userState.profile.preferredCurrency);
     final isWatched = userState.profile.watchlist.contains(stock.symbol);
     final holding = userState.holdings.firstWhere((h) => h.symbol == stock.symbol, orElse: () => Holding(symbol: stock.symbol, quantity: 0, averagePrice: 0));
+
+    if (!_initializedTab) {
+      _initializedTab = true;
+      _selectedTab = holding.quantity > 0 ? 0 : (stock.isStock ? 1 : 2);
+    } else if (!stock.isStock && _selectedTab == 1) {
+      _selectedTab = 2;
+    }
 
     final good = stock.changePercentage >= 0;
     final color = good ? AppColors.profit : AppColors.loss;
@@ -201,10 +392,11 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
         volume: 1000,
       )).toList();
     }
-    if (activeCandles.length < 2 && stock.currentPrice > 0) {
-      activeCandles = MarketNotifier.generateFallbackCandles(stock.currentPrice);
+    if (activeCandles.length < 2) {
+      final seedPrice = stock.currentPrice > 0 ? stock.currentPrice : 100.0;
+      activeCandles = MarketNotifier.generateFallbackCandles(seedPrice);
     }
-    final hasEnoughHistory = activeCandles.length >= 2;
+    final hasEnoughHistory = _chartMode == ChartViewMode.tradingView || activeCandles.length >= 2;
 
     // Show loading / error state only if history hasn't loaded yet
     if (!hasEnoughHistory) {
@@ -213,7 +405,11 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
           backgroundColor: AppColors.background,
           appBar: AppBar(
             backgroundColor: AppColors.background,
-            title: Text(stock.symbol),
+            title: Text(
+              stock.category == 'Indices' || stock.symbol.startsWith('^')
+                  ? stock.name
+                  : stock.symbol,
+            ),
           ),
           body: Center(
             child: Column(
@@ -247,7 +443,7 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
                 const SizedBox(height: 16),
                 Text(
                   'Unable to load ${stock.name} data',
-                  style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                  style: TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
                 const Text(
@@ -263,7 +459,7 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
                       _startHistoryTimeoutTimer();
                     });
                     ref.read(marketProvider.notifier).refresh();
-                    _fetchRangeData(_range, widget.stockSymbol);
+                    _fetchRangeData(_range, _currentSymbol);
                   },
                   icon: const Icon(Icons.refresh, size: 18),
                   label: const Text('Retry'),
@@ -282,19 +478,70 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
     
     final minPrice = activeCandles.isEmpty ? stock.currentPrice : activeCandles.map((c) => c.low).reduce(min);
     final maxPrice = activeCandles.isEmpty ? stock.currentPrice : activeCandles.map((c) => c.high).reduce(max);
+
+    DateTime? nativeVisibleMin;
+    DateTime? nativeVisibleMax;
+    if (activeCandles.length > 35) {
+      nativeVisibleMin = activeCandles[activeCandles.length - 35].date;
+      final lastDate = activeCandles.last.date;
+      final secondLastDate = activeCandles[activeCandles.length - 2].date;
+      final diffMin = lastDate.difference(secondLastDate).inMinutes.clamp(1, 1440);
+      nativeVisibleMax = lastDate.add(Duration(minutes: diffMin * 4));
+    }
     
+    final pickerMarket = stock.isStock
+        ? [...indicesMarket, ...stockMarket]
+        : cryptoMarket;
+
     final sliverAppBar = SliverAppBar(
       backgroundColor: AppColors.background,
       elevation: 0,
       pinned: true,
-      title: Row(
-        children: [
-          CoinIcon(symbol: stock.symbol, size: 28),
-          const SizedBox(width: 10),
-          Text(stock.symbol, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
-          const SizedBox(width: 6),
-          Text(stock.name, style: const TextStyle(color: Colors.white38, fontSize: 13, fontWeight: FontWeight.w400)),
-        ],
+      titleSpacing: 0,
+      title: InkWell(
+        onTap: () => _showAssetPicker(pickerMarket, isStock: stock.isStock),
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.outline),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CoinIcon(symbol: stock.symbol, size: 22),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      stock.category == 'Indices' || stock.symbol.startsWith('^')
+                          ? stock.name
+                          : stock.symbol,
+                      style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: AppColors.textPrimary),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      stock.category == 'Indices' || stock.symbol.startsWith('^')
+                          ? 'Index • ${stock.symbol.replaceAll('^', '')}'
+                          : stock.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: AppColors.subtle, fontSize: 10, fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.subtle, size: 18),
+            ],
+          ),
+        ),
       ),
       actions: [
         IconButton(
@@ -310,7 +557,7 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
         ),
         IconButton(
           onPressed: () => ref.read(userProvider.notifier).toggleWatchlist(stock.symbol),
-          icon: Icon(isWatched ? Icons.star : Icons.star_border, color: isWatched ? Colors.amber : Colors.white38),
+          icon: Icon(isWatched ? Icons.star : Icons.star_border, color: isWatched ? Colors.amber : AppColors.subtle),
         ),
       ],
     );
@@ -318,6 +565,12 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
     // 24h high/low from active candles
     final high24h = activeCandles.isEmpty ? stock.currentPrice : activeCandles.map((c) => c.high).reduce(max);
     final low24h  = activeCandles.isEmpty ? stock.currentPrice : activeCandles.map((c) => c.low).reduce(min);
+
+    // Native price formatting for stocks matching the exchange chart (e.g. ₹ for NSE/BSE, $ for US Tech)
+    final String nativeSymbol = stock.currency == 'INR' ? '₹' : (stock.currency == 'USD' ? '\$' : stock.currency);
+    final String primaryPriceFormatted = _formatStockOrCryptoPrice(stock.currentPrice, stock, formatter);
+    final String primaryHighFormatted = _formatStockOrCryptoPrice(high24h, stock, formatter);
+    final String primaryLowFormatted = _formatStockOrCryptoPrice(low24h, stock, formatter);
 
     final headerWidget = Padding(
       padding: const EdgeInsets.fromLTRB(16, 2, 16, 2),
@@ -333,7 +586,7 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
               textBaseline: TextBaseline.alphabetic,
               children: [
                 Text(
-                  formatter.format(stock.currentPrice),
+                  primaryPriceFormatted,
                   style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w900, letterSpacing: -0.5),
                 ),
                 const SizedBox(width: 10),
@@ -352,13 +605,24 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
               ],
             ),
           ),
+          if (stock.isStock && (stock.currency.toUpperCase() != userState.profile.preferredCurrency.toUpperCase())) ...[
+            const SizedBox(height: 2),
+            Text(
+              '≈ ${CurrencyFormatters.formatUsd(stock.currency == 'INR' ? (stock.currentPrice / 85.0) : stock.currentPrice, userState.profile.preferredCurrency)} (${userState.profile.preferredCurrency})',
+              style: const TextStyle(
+                color: Color(0xFF94A3B8),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
           const SizedBox(height: 6),
           // 24h High / Low
           Row(
             children: [
-              _HighLowBadge(label: '24H H', value: formatter.format(high24h), color: AppColors.profit),
+              _HighLowBadge(label: '24H H', value: primaryHighFormatted, color: AppColors.profit),
               const SizedBox(width: 10),
-              _HighLowBadge(label: '24H L', value: formatter.format(low24h), color: AppColors.loss),
+              _HighLowBadge(label: '24H L', value: primaryLowFormatted, color: AppColors.loss),
             ],
           ),
         ],
@@ -399,9 +663,9 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1E2329),
+                    color: AppColors.surfaceAlt,
                     borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: Colors.white10),
+                    border: Border.all(color: AppColors.outline),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -414,8 +678,8 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
                       const SizedBox(width: 4),
                       Text(
                         _chartStyle == '1' ? 'Candles' : 'Line',
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: AppColors.textPrimary,
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
@@ -433,6 +697,7 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
                       builder: (ctx) => TradingViewFullScreenPage(
                         symbol: stock.symbol,
                         initialInterval: _tvInterval,
+                        livePrice: stock.currentPrice,
                       ),
                     ),
                   );
@@ -449,6 +714,7 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
               symbol: stock.symbol,
               initialInterval: _tvInterval,
               chartStyle: _chartStyle,
+              livePrice: stock.currentPrice,
               enableDrawingToolbar: false, // Clean CoinDCX: no squishing sidebar
               showTopToolbar: false, // Clean CoinDCX: no cut-off search bar
               showDateRanges: false, // Clean CoinDCX: no bottom date widget
@@ -468,17 +734,19 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
                     enable: true,
                     activationMode: ActivationMode.singleTap,
                     tooltipDisplayMode: TrackballDisplayMode.groupAllPoints,
-                    tooltipSettings: const InteractiveTooltip(
+                    tooltipSettings: InteractiveTooltip(
                       enable: true,
-                      color: Color(0xFF2B3139),
-                      textStyle: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                      color: AppColors.surface,
+                      textStyle: TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.bold),
                     ),
                   ),
                   zoomPanBehavior: _zoomPanBehavior,
                   primaryXAxis: DateTimeAxis(
                     onRendererCreated: (controller) => _xAxisController = controller,
                     isVisible: true,
-                    labelStyle: const TextStyle(color: Colors.white38, fontSize: 10),
+                    initialVisibleMinimum: nativeVisibleMin,
+                    initialVisibleMaximum: nativeVisibleMax,
+                    labelStyle: TextStyle(color: AppColors.subtle, fontSize: 10),
                     majorGridLines: const MajorGridLines(width: 0),
                     axisLine: const AxisLine(width: 0),
                   ),
@@ -517,9 +785,9 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
                           label = '$sym${conv.toStringAsFixed(2)}';
                         }
                       }
-                      return ChartAxisLabel(label, const TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.w500));
+                      return ChartAxisLabel(label, TextStyle(color: AppColors.subtle, fontSize: 10, fontWeight: FontWeight.w500));
                     },
-                    majorGridLines: const MajorGridLines(width: 0.5, color: Colors.white10),
+                    majorGridLines: MajorGridLines(width: 0.5, color: AppColors.outline),
                     axisLine: const AxisLine(width: 0),
                   ),
                   plotAreaBorderWidth: 0,
@@ -544,7 +812,7 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
                     gridData: FlGridData(
                       show: true,
                       drawVerticalLine: false,
-                      getDrawingHorizontalLine: (v) => FlLine(color: Colors.white.withValues(alpha: 0.06), strokeWidth: 1),
+                      getDrawingHorizontalLine: (v) => FlLine(color: AppColors.outline, strokeWidth: 1),
                     ),
                     titlesData: FlTitlesData(
                       leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -582,7 +850,7 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
                             }
                             return Padding(
                               padding: const EdgeInsets.only(left: 6),
-                              child: Text(label, style: const TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.w500)),
+                              child: Text(label, style: TextStyle(color: AppColors.subtle, fontSize: 10, fontWeight: FontWeight.w500)),
                             );
                           },
                         ),
@@ -594,7 +862,7 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
                     lineTouchData: LineTouchData(
                       enabled: true,
                       touchTooltipData: LineTouchTooltipData(
-                        getTooltipColor: (_) => const Color(0xFF1E2329),
+                        getTooltipColor: (_) => AppColors.surface,
                         tooltipBorder: BorderSide(color: color.withValues(alpha: 0.4)),
                         getTooltipItems: (spots) => spots.map((s) {
                           if (activeCandles.isEmpty) return null;
@@ -607,7 +875,7 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
                             children: [
                               TextSpan(
                                 text: fmt.format(candle.date),
-                                style: const TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.w400),
+                                style: TextStyle(color: AppColors.subtle, fontSize: 11, fontWeight: FontWeight.w400),
                               ),
                             ],
                           );
@@ -617,7 +885,7 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
                         return TouchedSpotIndicatorData(
                           FlLine(color: color.withValues(alpha: 0.5), strokeWidth: 1.5, dashArray: [4, 4]),
                           FlDotData(show: true, getDotPainter: (_, __, ___, ____) =>
-                            FlDotCirclePainter(radius: 5, color: color, strokeWidth: 2, strokeColor: Colors.white)),
+                            FlDotCirclePainter(radius: 5, color: color, strokeWidth: 2, strokeColor: AppColors.surface)),
                         );
                       }).toList(),
                     ),
@@ -711,7 +979,7 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
                       return Expanded(
                         child: GestureDetector(
                           onTap: () {
-                            if (_range != r) _fetchRangeData(r, widget.stockSymbol);
+                            if (_range != r) _fetchRangeData(r, _currentSymbol);
                           },
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 200),
@@ -728,7 +996,7 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
                               r,
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                color: isSelected ? color : Colors.white38,
+                                color: isSelected ? color : AppColors.subtle,
                                 fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
                                 fontSize: 13,
                               ),
@@ -745,13 +1013,13 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
                   child: Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1E2329),
+                      color: AppColors.surfaceAlt,
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.white10),
+                      border: Border.all(color: AppColors.outline),
                     ),
                     child: Icon(
                       _chartMode == ChartViewMode.candle ? Icons.show_chart : Icons.candlestick_chart,
-                      color: Colors.white54,
+                      color: AppColors.textSecondary,
                       size: 18,
                     ),
                   ),
@@ -765,29 +1033,114 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
     );
 
     final tabsWidget = Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+      padding: const EdgeInsets.only(top: 8),
       child: Container(
         decoration: BoxDecoration(
-          border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.08))),
+          border: Border(bottom: BorderSide(color: AppColors.outline)),
         ),
         child: Row(
-          children: [
-            _buildTab(0, 'Order Book', color),
-            const SizedBox(width: 24),
-            _buildTab(1, 'Positions', color),
-            const SizedBox(width: 24),
-            _buildTab(2, 'Info', color),
-          ],
+          children: stock.isStock
+              ? [
+                  _buildTab(0, 'Positions', color),
+                  const SizedBox(width: 24),
+                  _buildTab(1, 'Info', color),
+                  const SizedBox(width: 24),
+                  _buildTab(2, 'Order Book', color),
+                ]
+              : [
+                  _buildTab(2, 'Order Book', color),
+                  const SizedBox(width: 24),
+                  _buildTab(0, 'Positions', color),
+                ],
         ),
       ),
     );
 
-    final contentWidget = Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: _buildTabContent(stock, holding, userState, formatter),
-    );
+    final contentWidget = _buildTabContent(stock, holding, userState, formatter);
 
-    final buySellBar = ClipRRect(
+    final bool isIndex = stock.category == 'Indices' || stock.symbol.startsWith('^');
+    String etfSymbol = 'SPY';
+    if (stock.symbol == '^IXIC' || stock.name.contains('NASDAQ')) {
+      etfSymbol = 'QQQ';
+    } else if (stock.symbol == '^DJI' || stock.name.contains('Dow')) {
+      etfSymbol = 'DIA';
+    }
+
+    final Widget buySellBar = isIndex
+        ? ClipRRect(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+              child: Container(
+                padding: EdgeInsets.fromLTRB(16, 12, 16, MediaQuery.of(context).padding.bottom + 12),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      AppColors.background.withValues(alpha: 0.8),
+                      AppColors.background.withValues(alpha: 0.96),
+                    ],
+                  ),
+                  border: Border(top: BorderSide(color: AppColors.outline)),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Row(
+                            children: [
+                              Icon(Icons.query_stats_rounded, color: AppColors.primary, size: 16),
+                              SizedBox(width: 6),
+                              Text(
+                                'MARKET BENCHMARK INDEX',
+                                style: TextStyle(
+                                  color: AppColors.primary,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 11,
+                                  letterSpacing: 0.4,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            'Benchmark only. Trade $etfSymbol ETF to take positions.',
+                            style: const TextStyle(color: Color(0xFF848E9C), fontSize: 11),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    FilledButton.icon(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => StockDetailScreen(stockSymbol: etfSymbol),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.candlestick_chart_rounded, size: 16),
+                      label: Text('Trade $etfSymbol'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.black,
+                        minimumSize: const Size(0, 44),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          )
+        : ClipRRect(
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
         child: Container(
@@ -825,7 +1178,9 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      formatter.format(stock.currentPrice),
+                      stock.isStock
+                          ? '$nativeSymbol${NumberFormat('#,##0.00', 'en_US').format(stock.currentPrice)}'
+                          : formatter.format(stock.currentPrice),
                       style: TextStyle(
                         color: color,
                         fontWeight: FontWeight.w900,
@@ -873,22 +1228,27 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
                       SliverToBoxAdapter(child: headerWidget),
                       const SliverToBoxAdapter(child: SizedBox(height: 20)),
                       SliverToBoxAdapter(child: chartWidget),
+                      if (stock.isStock)
+                        SliverToBoxAdapter(
+                          child: MarketSessionBar(exchange: stock.exchange),
+                        ),
                     ],
                   ),
                 ),
-                const VerticalDivider(width: 1, thickness: 1, color: Colors.white10),
+                VerticalDivider(width: 1, thickness: 1, color: AppColors.outline),
                 Expanded(
                   flex: 4,
                   child: Column(
                     children: [
                       Expanded(
                         child: SingleChildScrollView(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const SizedBox(height: 20),
+                              const SizedBox(height: 16),
                               tabsWidget,
-                              const SizedBox(height: 20),
+                              const SizedBox(height: 16),
                               contentWidget,
                               const SizedBox(height: 40),
                             ],
@@ -911,14 +1271,18 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
                   SliverToBoxAdapter(child: headerWidget),
                   const SliverToBoxAdapter(child: SizedBox(height: 4)),
                   SliverToBoxAdapter(child: chartWidget),
+                  if (stock.isStock)
+                    SliverToBoxAdapter(
+                      child: MarketSessionBar(exchange: stock.exchange),
+                    ),
                   SliverToBoxAdapter(
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                      padding: const EdgeInsets.fromLTRB(14, 4, 14, 16),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           tabsWidget,
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 12),
                           contentWidget,
                           const SizedBox(height: 100),
                         ],
@@ -939,6 +1303,10 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
   }
 
   void _openTradeSheet(BuildContext context, Stock stock, OrderSide side, bool isFutures) {
+    if (stock.isStock) {
+      StockTradeSheet.show(context, stock, side);
+      return;
+    }
     if (isFutures) {
       showModalBottomSheet(
         context: context,
@@ -971,16 +1339,18 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
           duration: const Duration(milliseconds: 150),
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
-            color: isSelected ? const Color(0xFF2B3139) : Colors.transparent,
+            color: isSelected
+                ? (AppColors.isDarkMode ? const Color(0xFF2B3139) : AppColors.primary.withValues(alpha: 0.14))
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(6),
             border: Border.all(
-              color: isSelected ? AppColors.primary.withValues(alpha: 0.6) : Colors.white12,
+              color: isSelected ? AppColors.primary.withValues(alpha: 0.6) : AppColors.outline,
             ),
           ),
           child: Text(
             label,
             style: TextStyle(
-              color: isSelected ? AppColors.primary : Colors.white70,
+              color: isSelected ? AppColors.primary : AppColors.textSecondary,
               fontSize: 12,
               fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
             ),
@@ -1018,7 +1388,7 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
             width: _isResizingChart ? 56 : 40,
             height: _isResizingChart ? 5 : 4,
             decoration: BoxDecoration(
-              color: _isResizingChart ? AppColors.primary : Colors.white.withValues(alpha: 0.3),
+              color: _isResizingChart ? AppColors.primary : AppColors.subtle.withValues(alpha: 0.4),
               borderRadius: BorderRadius.circular(3),
               boxShadow: _isResizingChart
                   ? [
@@ -1055,7 +1425,7 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
           title,
           style: TextStyle(
             fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
-            color: isSelected ? Colors.white : Colors.white38,
+            color: isSelected ? AppColors.textPrimary : AppColors.subtle,
             fontSize: 15,
           ),
         ),
@@ -1065,23 +1435,23 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
 
   Widget _buildTabContent(Stock stock, Holding holding, UserState userState, AppCurrencyFormatter formatter) {
     if (_selectedTab == 0) {
-      return _OrderBookWidget(stock: stock);
-    } else if (_selectedTab == 1) {
+      // ── TAB 0: POSITIONS ────────────────────────────────────────────────
       final trades = userState.trades.where((t) => t.symbol == stock.symbol).toList();
       final pnl = (stock.currentPrice - holding.averagePrice) * holding.quantity;
       final pnlPct = holding.averagePrice > 0
           ? ((stock.currentPrice - holding.averagePrice) / holding.averagePrice) * 100
           : 0.0;
       final pnlColor = pnl >= 0 ? AppColors.profit : AppColors.loss;
+      final String nativeSymbol = stock.currency == 'INR' ? '₹' : (stock.currency == 'USD' ? '\$' : stock.currency);
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (holding.quantity > 0) ...[
             Container(
               decoration: BoxDecoration(
-                color: const Color(0xFF141A21),
+                color: AppColors.surface,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.white10),
+                border: Border.all(color: AppColors.outline),
               ),
               child: IntrinsicHeight(
                 child: Row(
@@ -1105,29 +1475,34 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                const Text('Owned', style: TextStyle(color: Colors.white54, fontSize: 13)),
-                                Text('${holding.quantity} ${stock.symbol}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                                Text('Owned', style: TextStyle(color: AppColors.subtle, fontSize: 13)),
+                                Text('${holding.quantity} ${stock.symbol}', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800, fontSize: 14)),
                               ],
                             ),
                             const SizedBox(height: 10),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                const Text('Avg Buy Price', style: TextStyle(color: Colors.white54, fontSize: 13)),
-                                Text(formatter.format(holding.averagePrice), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                                Text('Avg Buy Price', style: TextStyle(color: AppColors.subtle, fontSize: 13)),
+                                Text(
+                                  _formatStockOrCryptoPrice(holding.averagePrice, stock, formatter),
+                                  style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800, fontSize: 14),
+                                ),
                               ],
                             ),
                             const SizedBox(height: 10),
-                            const Divider(color: Colors.white10, height: 1),
+                            Divider(color: AppColors.outline, height: 1),
                             const SizedBox(height: 10),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                const Text('Total Return', style: TextStyle(color: Colors.white54, fontSize: 13)),
+                                Text('Total Return', style: TextStyle(color: AppColors.subtle, fontSize: 13)),
                                 Row(
                                   children: [
                                     Text(
-                                      formatter.format(pnl),
+                                      stock.isStock
+                                          ? '${pnl >= 0 ? '+' : ''}$nativeSymbol${NumberFormat(pnl.abs() >= 100 ? '#,##0.00' : '#,##0.00##', 'en_US').format(pnl.abs())}'
+                                          : formatter.format(pnl),
                                       style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: pnlColor),
                                     ),
                                     const SizedBox(width: 8),
@@ -1156,60 +1531,149 @@ class _StockDetailScreenState extends ConsumerState<StockDetailScreen> {
             ),
           ] else
             Container(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
               decoration: BoxDecoration(
-                color: const Color(0xFF141A21),
+                color: AppColors.surface,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.white10),
+                border: Border.all(color: AppColors.outline),
               ),
-              child: const Row(
+              child: Row(
                 children: [
-                  Icon(Icons.info_outline, color: Colors.white38, size: 18),
-                  SizedBox(width: 10),
-                  Text('You have no open positions for this asset.', style: TextStyle(color: Colors.white54)),
+                  Icon(Icons.info_outline, color: AppColors.subtle, size: 18),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'You have no open positions for this asset.',
+                      style: TextStyle(color: AppColors.subtle, fontSize: 13),
+                    ),
+                  ),
                 ],
               ),
             ),
           _OpenLimitOrdersWidget(symbol: stock.symbol),
           const SizedBox(height: 24),
-          const Text('Trade History', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white)),
+          Text('Trade History', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
           const SizedBox(height: 12),
           if (trades.isEmpty)
-            const Text('No trades yet.', style: TextStyle(color: Colors.white54))
+            Text('No trades yet.', style: TextStyle(color: AppColors.subtle))
           else
             ...trades.reversed.map((t) => _TradeHistoryTile(t)),
         ],
       );
-    } else {
+    } else if (_selectedTab == 1) {
+      // ── TAB 1: INFO ─────────────────────────────────────────────────────
+      final bool isStock = stock.isStock;
+      final String nativeSym = stock.currency == 'INR' ? '₹' : (stock.currency == 'USD' ? '\$' : stock.currency);
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Market Stats', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white)),
+          Text('Market Stats', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
           const SizedBox(height: 12),
           Row(
             children: [
-              Expanded(child: _StatCard('Market Cap', AppCompactCurrencyFormatter(userState.profile.preferredCurrency).format(stock.marketCap), Icons.bar_chart_rounded)),
+              Expanded(
+                child: _StatCard(
+                  'Market Cap',
+                  isStock
+                      ? '\$${NumberFormat.compact().format(stock.marketCap)}'
+                      : AppCompactCurrencyFormatter(userState.profile.preferredCurrency).format(stock.marketCap),
+                  Icons.bar_chart_rounded,
+                ),
+              ),
               const SizedBox(width: 8),
-              Expanded(child: _StatCard('Volume (24h)', NumberFormat.compact().format(stock.volume), Icons.swap_horiz_rounded)),
+              Expanded(
+                child: _StatCard(
+                  'Volume (24h)',
+                  NumberFormat.compact().format(
+                    stock.volume > 0
+                        ? stock.volume
+                        : (stock.candleHistory.isNotEmpty
+                            ? stock.candleHistory.map((c) => c.volume).reduce((a, b) => a + b).toInt()
+                            : 1500000),
+                  ),
+                  Icons.swap_horiz_rounded,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(child: _StatCard('Circ. Supply', '${NumberFormat.compact().format(stock.supply)} ${stock.symbol}', Icons.currency_bitcoin_rounded)),
-              const SizedBox(width: 8),
-              Expanded(child: _StatCard('Rank', '#${stock.rank}', Icons.emoji_events_rounded)),
-            ],
-          ),
+          if (isStock) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: _StatCard(
+                    '52W High',
+                    stock.fiftyTwoWeekHigh > 0
+                        ? '$nativeSym${NumberFormat('#,##0.00', 'en_US').format(stock.fiftyTwoWeekHigh)}'
+                        : 'N/A',
+                    Icons.arrow_upward_rounded,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _StatCard(
+                    '52W Low',
+                    stock.fiftyTwoWeekLow > 0
+                        ? '$nativeSym${NumberFormat('#,##0.00', 'en_US').format(stock.fiftyTwoWeekLow)}'
+                        : 'N/A',
+                    Icons.arrow_downward_rounded,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: _StatCard(
+                    'Exchange',
+                    stock.exchange.isNotEmpty ? stock.exchange : 'US',
+                    Icons.account_balance_rounded,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _StatCard(
+                    'Category',
+                    stock.category,
+                    Icons.category_rounded,
+                  ),
+                ),
+              ],
+            ),
+          ] else ...[
+            Row(
+              children: [
+                Expanded(
+                  child: _StatCard(
+                    'Circ. Supply',
+                    '${NumberFormat.compact().format(stock.supply)} ${stock.symbol}',
+                    Icons.currency_bitcoin_rounded,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _StatCard(
+                    'Rank',
+                    '#${stock.rank}',
+                    Icons.emoji_events_rounded,
+                  ),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 24),
-          const Text('About', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white)),
+          Text('About', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
           const SizedBox(height: 12),
           Text(
-            stock.about,
-            style: const TextStyle(color: Colors.white60, height: 1.6, fontSize: 14),
+            stock.about.isNotEmpty ? stock.about : stock.name,
+            style: TextStyle(color: AppColors.textSecondary, height: 1.6, fontSize: 14),
           ),
         ],
       );
+    } else {
+      // ── TAB 2: ORDER BOOK ───────────────────────────────────────────────
+      return _OrderBookWidget(stock: stock);
     }
   }
 }
@@ -1230,6 +1694,7 @@ class _OrderBookWidget extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final userState = ref.watch(userProvider);
     final formatter = AppCurrencyFormatter(userState.profile.preferredCurrency);
+    final String nativeSymbol = stock.currency == 'INR' ? '₹' : (stock.currency == 'USD' ? '\$' : stock.currency);
 
     final orderBookAsync = ref.watch(
       orderBookProvider(OrderBookParams(symbol: stock.symbol, isFutures: false)),
@@ -1250,13 +1715,13 @@ class _OrderBookWidget extends ConsumerWidget {
       asks = List.generate(8, (i) {
         final price = stock.currentPrice + (random.nextDouble() * stock.currentPrice * 0.001) + (i * stock.currentPrice * 0.0005);
         final qty = random.nextDouble() * 5 + 0.1;
-        return OrderBookEntry(price: price, rawPrice: price / CurrencyFormatters.usdToInr, qty: qty);
+        return OrderBookEntry(price: price, rawPrice: stock.isStock ? price : (price / CurrencyFormatters.usdToInr), qty: qty);
       }).reversed.toList();
 
       bids = List.generate(8, (i) {
         final price = stock.currentPrice - (random.nextDouble() * stock.currentPrice * 0.001) - (i * stock.currentPrice * 0.0005);
         final qty = random.nextDouble() * 5 + 0.1;
-        return OrderBookEntry(price: price, rawPrice: price / CurrencyFormatters.usdToInr, qty: qty);
+        return OrderBookEntry(price: price, rawPrice: stock.isStock ? price : (price / CurrencyFormatters.usdToInr), qty: qty);
       });
       maxQty = [...bids.map((b) => b.qty), ...asks.map((a) => a.qty)].reduce(max);
     }
@@ -1277,15 +1742,17 @@ class _OrderBookWidget extends ConsumerWidget {
                     width: 6,
                     height: 6,
                     decoration: BoxDecoration(
-                      color: isLive ? AppColors.profit : Colors.amber,
+                      color: (stock.isStock || isLive) ? AppColors.profit : Colors.amber,
                       shape: BoxShape.circle,
                     ),
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    isLive ? 'LIVE DEPTH (BINANCE)' : 'CONNECTING BINANCE...',
-                    style: const TextStyle(
-                      color: Colors.white38,
+                    stock.isStock
+                        ? (isLive ? 'LIVE MARKET DEPTH'.tr() : 'SIMULATED ORDER BOOK'.tr())
+                        : (isLive ? 'LIVE DEPTH (BINANCE)'.tr() : 'CONNECTING BINANCE...'.tr()),
+                    style: TextStyle(
+                      color: AppColors.subtle,
                       fontSize: 10,
                       fontWeight: FontWeight.w700,
                       letterSpacing: 0.5,
@@ -1296,32 +1763,32 @@ class _OrderBookWidget extends ConsumerWidget {
               if (orderBook?.lastUpdated != null)
                 Text(
                   '${orderBook!.lastUpdated!.hour.toString().padLeft(2, '0')}:${orderBook.lastUpdated!.minute.toString().padLeft(2, '0')}:${orderBook.lastUpdated!.second.toString().padLeft(2, '0')}',
-                  style: const TextStyle(color: Colors.white24, fontSize: 10),
+                  style: TextStyle(color: AppColors.subtle, fontSize: 10),
                 ),
             ],
           ),
         ),
         // Header row
-        const Padding(
-          padding: EdgeInsets.only(bottom: 8),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
           child: Row(
             children: [
               Expanded(
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Bid Qty', style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.w600)),
-                    Text('Bid Price', style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.w600)),
+                    Text('Bid Qty', style: TextStyle(color: AppColors.subtle, fontSize: 11, fontWeight: FontWeight.w600)),
+                    Text('Bid Price', style: TextStyle(color: AppColors.subtle, fontSize: 11, fontWeight: FontWeight.w600)),
                   ],
                 ),
               ),
-              SizedBox(width: 16),
+              const SizedBox(width: 16),
               Expanded(
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Ask Price', style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.w600)),
-                    Text('Ask Qty', style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.w600)),
+                    Text('Ask Price', style: TextStyle(color: AppColors.subtle, fontSize: 11, fontWeight: FontWeight.w600)),
+                    Text('Ask Qty', style: TextStyle(color: AppColors.subtle, fontSize: 11, fontWeight: FontWeight.w600)),
                   ],
                 ),
               ),
@@ -1360,8 +1827,13 @@ class _OrderBookWidget extends ConsumerWidget {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(_formatQty(bid.qty), style: const TextStyle(color: Colors.white60, fontSize: 12)),
-                            Text(formatter.format(bid.price), style: const TextStyle(color: AppColors.profit, fontWeight: FontWeight.w700, fontSize: 12)),
+                            Text(_formatQty(bid.qty), style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                            Text(
+                              stock.isStock
+                                  ? '$nativeSymbol${NumberFormat('#,##0.00', 'en_US').format(bid.price)}'
+                                  : formatter.format(bid.price),
+                              style: const TextStyle(color: AppColors.profit, fontWeight: FontWeight.w700, fontSize: 12),
+                            ),
                           ],
                         ),
                       ),
@@ -1390,8 +1862,13 @@ class _OrderBookWidget extends ConsumerWidget {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(formatter.format(ask.price), style: const TextStyle(color: AppColors.loss, fontWeight: FontWeight.w700, fontSize: 12)),
-                            Text(_formatQty(ask.qty), style: const TextStyle(color: Colors.white60, fontSize: 12)),
+                            Text(
+                              stock.isStock
+                                  ? '$nativeSymbol${NumberFormat('#,##0.00', 'en_US').format(ask.price)}'
+                                  : formatter.format(ask.price),
+                              style: const TextStyle(color: AppColors.loss, fontWeight: FontWeight.w700, fontSize: 12),
+                            ),
+                            Text(_formatQty(ask.qty), style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
                           ],
                         ),
                       ),
@@ -1420,8 +1897,9 @@ class _TradeHistoryTile extends ConsumerWidget {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.outline),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1433,8 +1911,8 @@ class _TradeHistoryTile extends ConsumerWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(isBuy ? 'Bought' : 'Sold', style: const TextStyle(fontWeight: FontWeight.bold)),
-                  Text(trade.time.toString().split('.')[0], style: const TextStyle(fontSize: 12, color: Colors.white54)),
+                  Text(isBuy ? 'Bought' : 'Sold', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                  Text(trade.time.toString().split('.')[0], style: TextStyle(fontSize: 12, color: AppColors.subtle)),
                 ],
               ),
             ],
@@ -1442,8 +1920,13 @@ class _TradeHistoryTile extends ConsumerWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text(formatter.format(trade.price), style: const TextStyle(fontWeight: FontWeight.bold)),
-              Text('${trade.quantity} ${trade.symbol}', style: const TextStyle(fontSize: 12, color: Colors.white54)),
+              Text(
+                trade.symbol.endsWith('USDT')
+                    ? formatter.format(trade.price)
+                    : CurrencyFormatters.formatUsd(trade.price, userState.profile.preferredCurrency),
+                style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+              ),
+              Text('${trade.quantity} ${trade.symbol}', style: TextStyle(fontSize: 12, color: AppColors.subtle)),
             ],
           ),
         ],
@@ -1461,22 +1944,22 @@ class _StatCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF141A21),
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+        border: Border.all(color: AppColors.outline),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(icon, size: 14, color: Colors.white38),
+              Icon(icon, size: 14, color: AppColors.subtle),
               const SizedBox(width: 5),
-              Text(label, style: const TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.w500)),
+              Text(label, style: TextStyle(color: AppColors.subtle, fontSize: 11, fontWeight: FontWeight.w500)),
             ],
           ),
           const SizedBox(height: 8),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Colors.white)),
+          Text(value, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: AppColors.textPrimary)),
         ],
       ),
     );
@@ -1575,17 +2058,23 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
     final fee = totalCost * 0.001;
     final totalWithFee = isBuy ? totalCost + fee : totalCost - fee;
 
+    final isLimitPlausible = !isLimit || (
+      isBuy ? (_targetPrice >= liveStock.currentPrice * 0.10) : (_targetPrice <= liveStock.currentPrice * 10.0)
+    );
+
     final canExecute = isMarketOnline &&
         liveStock.isLive &&
+        liveStock.currentPrice > 0 &&
         _cryptoQty > 0 &&
         execPrice > 0 &&
+        isLimitPlausible &&
         (isBuy ? totalWithFee <= userState.profile.virtualBalance : _cryptoQty <= ownedQty);
 
     return Container(
       decoration: BoxDecoration(
         color: AppColors.background,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.1))),
+        border: Border(top: BorderSide(color: AppColors.outline)),
       ),
       padding: EdgeInsets.fromLTRB(24, 24, 24, MediaQuery.of(context).viewInsets.bottom + 24),
       child: SingleChildScrollView(
@@ -1597,7 +2086,7 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
             Container(
               padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.05),
+                color: AppColors.surfaceAlt,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
@@ -1612,7 +2101,7 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
                           borderRadius: BorderRadius.circular(8),
                         ),
                         alignment: Alignment.center,
-                        child: Text('Buy', style: TextStyle(fontWeight: FontWeight.bold, color: isBuy ? Colors.white : Colors.white54)),
+                        child: Text('Buy', style: TextStyle(fontWeight: FontWeight.bold, color: isBuy ? Colors.white : AppColors.subtle)),
                       ),
                     ),
                   ),
@@ -1626,7 +2115,7 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
                           borderRadius: BorderRadius.circular(8),
                         ),
                         alignment: Alignment.center,
-                        child: Text('Sell', style: TextStyle(fontWeight: FontWeight.bold, color: !isBuy ? Colors.white : Colors.white54)),
+                        child: Text('Sell', style: TextStyle(fontWeight: FontWeight.bold, color: !isBuy ? Colors.white : AppColors.subtle)),
                       ),
                     ),
                   ),
@@ -1654,7 +2143,7 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 13,
-                          color: !isLimit ? AppColors.primary : Colors.white54,
+                          color: !isLimit ? AppColors.primary : AppColors.subtle,
                         ),
                       ),
                     ),
@@ -1682,7 +2171,7 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 13,
-                              color: isLimit ? AppColors.warning : Colors.white54,
+                              color: isLimit ? AppColors.warning : AppColors.subtle,
                             ),
                           ),
                         ],
@@ -1699,7 +2188,7 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Target Limit Price', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 13)),
+                  Text('Target Limit Price', style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.bold, fontSize: 13)),
                   Text('Market: ${formatter.format(widget.stock.currentPrice)}', style: const TextStyle(color: AppColors.subtle, fontSize: 12)),
                 ],
               ),
@@ -1734,7 +2223,7 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(isBuy ? 'Available: ${formatter.format(userState.profile.virtualBalance)}' : 'Available: $ownedQty ${widget.stock.symbol}', style: const TextStyle(color: Colors.white60)),
+                Text(isBuy ? 'Available: ${formatter.format(userState.profile.virtualBalance)}' : 'Available: $ownedQty ${widget.stock.symbol}', style: TextStyle(color: AppColors.textSecondary)),
                 GestureDetector(
                   onTap: () => setState(() {
                     _isCryptoInput = !_isCryptoInput;
@@ -1770,7 +2259,7 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
                 padding: const EdgeInsets.only(top: 8.0, left: 4),
                 child: Text(
                   _isCryptoInput ? '≈ ${formatter.format(_fiatAmount)}' : '≈ $_cryptoQty ${widget.stock.symbol}',
-                  style: const TextStyle(color: Colors.white54),
+                  style: TextStyle(color: AppColors.subtle),
                 ),
               ),
             const SizedBox(height: 16),
@@ -1786,16 +2275,16 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
             const SizedBox(height: 24),
             Container(
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.03), borderRadius: BorderRadius.circular(12)),
+              decoration: BoxDecoration(color: AppColors.surfaceAlt, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.outline)),
               child: Column(
                 children: [
-                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(isLimit ? 'Limit Target Price' : 'Market price', style: const TextStyle(color: Colors.white60)), Text(formatter.format(execPrice), style: TextStyle(fontWeight: FontWeight.bold, color: isLimit ? AppColors.warning : Colors.white))]),
+                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(isLimit ? 'Limit Target Price' : 'Market price', style: TextStyle(color: AppColors.textSecondary)), Text(formatter.format(execPrice), style: TextStyle(fontWeight: FontWeight.bold, color: isLimit ? AppColors.warning : AppColors.textPrimary))]),
                   const SizedBox(height: 8),
-                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Estimated value', style: TextStyle(color: Colors.white60)), Text(formatter.format(totalCost), style: const TextStyle(fontWeight: FontWeight.bold))]),
+                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Estimated value', style: TextStyle(color: AppColors.textSecondary)), Text(formatter.format(totalCost), style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary))]),
                   const SizedBox(height: 8),
-                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('Est. Trading Fee (0.1%)', style: TextStyle(color: Colors.white60)), Text(formatter.format(fee), style: const TextStyle(fontWeight: FontWeight.bold))]),
-                  const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider(color: Colors.white10)),
-                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(isLimit ? 'Total Reserved' : 'Total', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)), Text(formatter.format(totalWithFee), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18))]),
+                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Est. Trading Fee (0.1%)', style: TextStyle(color: AppColors.textSecondary)), Text(formatter.format(fee), style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary))]),
+                  Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Divider(color: AppColors.outline)),
+                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(isLimit ? 'Total Reserved' : 'Total', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)), Text(formatter.format(totalWithFee), style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppColors.textPrimary))]),
                 ],
               ),
             ),
@@ -1832,7 +2321,32 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
                   ],
                 ),
               ),
-            if (!isMarketOnline || !liveStock.isLive) ...[
+            if (isLimit && !isLimitPlausible) ...[
+              Container(
+                margin: const EdgeInsets.only(bottom: 14),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: AppColors.loss.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.loss.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.warning_amber_rounded, color: AppColors.loss, size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        isBuy
+                            ? 'Limit price cannot be lower than 10% of market price.'
+                            : 'Limit price cannot exceed 10x current market price.',
+                        style: const TextStyle(color: AppColors.loss, fontSize: 12, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            if (!isMarketOnline || !liveStock.isLive || liveStock.currentPrice <= 0) ...[
               Container(
                 margin: const EdgeInsets.only(bottom: 14),
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -1895,19 +2409,21 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
               } : null,
               style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(56),
-                backgroundColor: (!isMarketOnline || !liveStock.isLive)
+                backgroundColor: (!isMarketOnline || !liveStock.isLive || liveStock.currentPrice <= 0 || (isLimit && !isLimitPlausible))
                     ? const Color(0xFF2B3139)
                     : (isLimit ? AppColors.warning : (isBuy ? AppColors.profit : AppColors.loss)),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               ),
               child: Text(
-                (!isMarketOnline || !liveStock.isLive)
+                (!isMarketOnline || !liveStock.isLive || liveStock.currentPrice <= 0)
                     ? 'Syncing Live Price...'
-                    : (isLimit ? 'Place Limit ${isBuy ? "Buy" : "Sell"}' : (isBuy ? 'Confirm Buy' : 'Confirm Sell')),
+                    : (isLimit && !isLimitPlausible
+                        ? 'Limit Price Out of Range'
+                        : (isLimit ? 'Place Limit ${isBuy ? "Buy" : "Sell"}' : (isBuy ? 'Confirm Buy' : 'Confirm Sell'))),
                 style: TextStyle(
                   fontWeight: FontWeight.w900,
                   fontSize: 18,
-                  color: (!isMarketOnline || !liveStock.isLive) ? Colors.white38 : (isLimit ? Colors.black : Colors.white),
+                  color: (!isMarketOnline || !liveStock.isLive || liveStock.currentPrice <= 0 || !canExecute) ? Colors.white38 : (isLimit ? Colors.black : Colors.white),
                 ),
               ),
             ),
@@ -1961,11 +2477,11 @@ class _OpenLimitOrdersWidget extends ConsumerWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Row(
+            Row(
               children: [
-                Icon(Icons.schedule_rounded, color: AppColors.warning, size: 18),
-                SizedBox(width: 6),
-                Text('Open Limit Orders', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white)),
+                const Icon(Icons.schedule_rounded, color: AppColors.warning, size: 18),
+                const SizedBox(width: 6),
+                Text('Open Limit Orders', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
               ],
             ),
             Container(
@@ -1988,7 +2504,7 @@ class _OpenLimitOrdersWidget extends ConsumerWidget {
             margin: const EdgeInsets.only(bottom: 8),
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: const Color(0xFF141A21),
+              color: AppColors.surface,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: AppColors.outline),
             ),
@@ -2016,7 +2532,7 @@ class _OpenLimitOrdersWidget extends ConsumerWidget {
                     children: [
                       Text(
                         'Target: ${formatter.format(order.targetPrice)}',
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                        style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 13),
                       ),
                       const SizedBox(height: 2),
                       Text(
@@ -2076,7 +2592,7 @@ class _HighLowBadge extends StatelessWidget {
         const SizedBox(width: 6),
         Text(
           value,
-          style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600),
+          style: TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w600),
         ),
       ],
     );
@@ -2099,11 +2615,11 @@ class _ChartFullscreenButton extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.all(7),
             decoration: BoxDecoration(
-              color: const Color(0xFF1E2329),
+              color: AppColors.surfaceAlt,
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.white10),
+              border: Border.all(color: AppColors.outline),
             ),
-            child: const Icon(Icons.fullscreen, color: Colors.white70, size: 18),
+            child: Icon(Icons.fullscreen, color: AppColors.textSecondary, size: 18),
           ),
         ),
       ),

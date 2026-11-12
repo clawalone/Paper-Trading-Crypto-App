@@ -1,17 +1,19 @@
-import 'dart:async';
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart';
+import 'package:flutter/cupertino.dart' show CupertinoPageRoute;
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../core/app_theme.dart';
 import '../../data/user_provider.dart';
-import '../../data/market_provider.dart';
+import '../../data/leaderboard_provider.dart';
 import '../../core/currency_formatters.dart';
-import '../../data/models.dart';
 import '../community/widgets/user_profile_modal.dart';
 import '../profile/admin_panel_screen.dart';
 import 'widgets/past_seven_days_metrics_sheet.dart';
+import '../../core/avatar_helper.dart';
+import 'streak_leaderboard_screen.dart';
+import '../../core/widgets/prestige_level_badge.dart';
 
 class LeaderboardScreen extends ConsumerStatefulWidget {
   const LeaderboardScreen({super.key});
@@ -21,273 +23,25 @@ class LeaderboardScreen extends ConsumerStatefulWidget {
 }
 
 class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
-  // Store stream in initState to avoid re-listening on every rebuild
-  late final Stream<QuerySnapshot> _usersStream;
-  Timer? _marketRefreshTimer;
+  bool _isNavigatingToStreaks = false;
 
-  // Cached data structures for O(1) rebuilds during scroll
-  QuerySnapshot? _lastSnapshot;
-  Map<String, double> _cachedPriceMap = {};
-  List<Map<String, dynamic>> _cachedPlayers = [];
-  int _cachedMyRank = -1;
-  Map<String, dynamic>? _cachedMyStats;
+  void _openStreakScreen() async {
+    if (_isNavigatingToStreaks) return;
+    _isNavigatingToStreaks = true;
+    HapticFeedback.lightImpact();
 
-  // Admin-only metrics
-  int _totalTradersCount = 0;
-  int _newTradersTodayCount = 0;
-  int _newTradersWeekCount = 0;
-  int _bannedUsersCount = 0;
-  List<DayRegistrationSummary> _pastSevenDaysSummary = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _usersStream = FirebaseFirestore.instance.collection('users').snapshots();
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _refreshAndRecompute();
-    });
-
-    // Refresh prices & recalculate net worth every 15s instead of on every 500ms market tick
-    _marketRefreshTimer = Timer.periodic(
-      const Duration(seconds: 15),
-      (_) => _refreshAndRecompute(),
-    );
-  }
-
-  void _refreshAndRecompute() {
-    if (!mounted) return;
-    final market = ref.read(marketProvider);
-    final map = <String, double>{};
-    for (final stock in market) {
-      map[stock.symbol] = stock.currentPrice;
-    }
-    _cachedPriceMap = map;
-
-    if (_lastSnapshot != null) {
-      _recomputeLeaderboard(_lastSnapshot!);
-    }
-  }
-
-  void _recomputeLeaderboard(QuerySnapshot snapshot) {
-    _lastSnapshot = snapshot;
-    final userState = ref.read(userProvider);
-    final players = _parsePlayers(snapshot.docs, _cachedPriceMap);
-
-    int myRank = -1;
-    Map<String, dynamic>? myStats;
-    final currentName = userState.profile.name;
-    final currentPublicUid = userState.profile.publicUid;
-
-    for (int i = 0; i < players.length; i++) {
-      final p = players[i];
-      if ((currentPublicUid.isNotEmpty && p['uid'] == currentPublicUid) ||
-          (p['name'] == currentName)) {
-        myRank = i + 1;
-        myStats = p;
-        break;
-      }
-    }
-
-    _computeMetricsForSnapshot(snapshot);
-
-    if (mounted) {
-      setState(() {
-        _cachedPlayers = players;
-        _cachedMyRank = myRank;
-        _cachedMyStats = myStats;
-      });
-    }
-  }
-
-  void _computeMetricsForSnapshot(QuerySnapshot snapshot) {
-    int totalTraders = 0;
-    int bannedCount = 0;
-
-    final now = DateTime.now();
-    // Midnight 00:00:00 of the current day (particular calendar day)
-    final startOfToday = DateTime(now.year, now.month, now.day, 0, 0, 0);
-
-    // Initialize 7 calendar days (0 = Today, 1 = Yesterday, ..., 6 = 6 days ago)
-    final List<DayRegistrationSummary> pastSevenDays = List.generate(7, (i) {
-      final dayDate = startOfToday.subtract(Duration(days: i));
-      String label;
-      if (i == 0) {
-        label = 'Today';
-      } else if (i == 1) {
-        label = 'Yesterday';
-      } else {
-        const weekdayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        label = '${weekdayNames[dayDate.weekday - 1]}, ${dayDate.day.toString().padLeft(2, '0')} ${monthNames[dayDate.month - 1]}';
-      }
-      return DayRegistrationSummary(
-        date: dayDate,
-        label: label,
-        entries: [],
+    try {
+      await Navigator.push(
+        context,
+        CupertinoPageRoute(
+          builder: (context) => const StreakLeaderboardScreen(),
+        ),
       );
-    });
-
-    for (final doc in snapshot.docs) {
-      try {
-        final data = doc.data() as Map<String, dynamic>;
-        final state = UserState.fromJson(data);
-
-        // Filter out admin accounts from metrics
-        if (state.profile.email.toLowerCase() == 'admin@gmail.com' ||
-            state.profile.name.toLowerCase().contains('admin')) {
-          continue;
-        }
-
-        final isBanned = state.isBanned || state.profile.isBanned;
-        if (isBanned) {
-          bannedCount++;
-          continue;
-        }
-
-        totalTraders++;
-
-        final joinDate = _extractUserJoinDate(data, state);
-        if (joinDate != null) {
-          // Check if joinDate falls into one of the past 7 calendar days
-          for (int i = 0; i < 7; i++) {
-            final dayStart = pastSevenDays[i].date;
-            final dayEnd = dayStart.add(const Duration(days: 1));
-            if (!joinDate.isBefore(dayStart) && joinDate.isBefore(dayEnd)) {
-              pastSevenDays[i].entries.add(
-                TraderRegistrationEntry(
-                  uid: (state.profile.publicUid.isNotEmpty) ? state.profile.publicUid : doc.id,
-                  name: state.profile.name,
-                  email: state.profile.email,
-                  photoUrl: state.profile.photoUrl,
-                  joinDate: joinDate,
-                  virtualBalance: state.profile.virtualBalance,
-                  netWorth: state.profile.virtualBalance,
-                  xp: state.profile.xp,
-                  isBanned: isBanned,
-                ),
-              );
-              break;
-            }
-          }
-        }
-      } catch (_) {}
-    }
-
-    // Sort entries within each day newest first
-    for (final day in pastSevenDays) {
-      day.entries.sort((a, b) => b.joinDate.compareTo(a.joinDate));
-    }
-
-    _totalTradersCount = totalTraders;
-    _newTradersTodayCount = pastSevenDays[0].count; // Strictly calendar day today since 00:00:00
-    _newTradersWeekCount = pastSevenDays.fold(0, (total, d) => total + d.count);
-    _bannedUsersCount = bannedCount;
-    _pastSevenDaysSummary = pastSevenDays;
-  }
-
-  DateTime? _extractUserJoinDate(Map<String, dynamic> data, [UserState? state]) {
-    // 1. Find true earliest historical timestamp across all user activity
-    DateTime? earliestActivityDate;
-
-    final walletEntries = data['walletEntries'] as List?;
-    if (walletEntries != null && walletEntries.isNotEmpty) {
-      for (final e in walletEntries) {
-        if (e is Map && e['timestamp'] != null) {
-          final d = DateTime.tryParse(e['timestamp'].toString());
-          if (d != null) {
-            if (earliestActivityDate == null || d.isBefore(earliestActivityDate)) {
-              earliestActivityDate = d;
-            }
-          }
-        }
+    } finally {
+      if (mounted) {
+        _isNavigatingToStreaks = false;
       }
     }
-
-    final trades = data['trades'] as List?;
-    if (trades != null && trades.isNotEmpty) {
-      for (final t in trades) {
-        if (t is Map && t['time'] != null) {
-          final d = DateTime.tryParse(t['time'].toString());
-          if (d != null) {
-            if (earliestActivityDate == null || d.isBefore(earliestActivityDate)) {
-              earliestActivityDate = d;
-            }
-          }
-        }
-      }
-    }
-
-    final spotOrders = data['spotLimitOrders'] as List?;
-    if (spotOrders != null && spotOrders.isNotEmpty) {
-      for (final o in spotOrders) {
-        if (o is Map && o['createdAt'] != null) {
-          final d = DateTime.tryParse(o['createdAt'].toString());
-          if (d != null) {
-            if (earliestActivityDate == null || d.isBefore(earliestActivityDate)) {
-              earliestActivityDate = d;
-            }
-          }
-        }
-      }
-    }
-
-    // 2. Read declared createdAt
-    DateTime? declaredCreatedAt;
-    if (state?.createdAt != null) {
-      declaredCreatedAt = state!.createdAt;
-    } else {
-      final rawCreated = data['createdAt'] ?? (data['profile'] as Map?)?['createdAt'];
-      if (rawCreated != null) {
-        if (rawCreated is Timestamp) {
-          declaredCreatedAt = rawCreated.toDate();
-        } else {
-          declaredCreatedAt = DateTime.tryParse(rawCreated.toString());
-        }
-      }
-    }
-
-    DateTime? effectiveJoinDate = declaredCreatedAt ?? earliestActivityDate;
-    if (earliestActivityDate != null && effectiveJoinDate != null) {
-      if (earliestActivityDate.isBefore(effectiveJoinDate)) {
-        effectiveJoinDate = earliestActivityDate;
-      }
-    }
-
-    if (effectiveJoinDate == null) return null;
-
-    // 3. HARD SANITY CHECKS: Filter out existing/legacy users falsely stamped with today's date
-    final profile = data['profile'] as Map<String, dynamic>?;
-    final streak = (state?.profile.streak ?? (profile?['streak'] as num?)?.toInt() ?? 0);
-    final xp = (state?.profile.xp ?? (profile?['xp'] as num?)?.toInt() ?? 0);
-    final claimedMilestones = state?.profile.claimedXpMilestones ??
-        (profile?['claimedXpMilestones'] as List?)?.map((e) => e.toString()).toSet() ??
-        {};
-
-    final now = DateTime.now();
-    final isEffectiveToday = effectiveJoinDate.year == now.year &&
-        effectiveJoinDate.month == now.month &&
-        effectiveJoinDate.day == now.day;
-
-    // Guard A: Streak > 1 means user has been active for at least `streak` days
-    if (streak > 1) {
-      final streakAnchor = now.subtract(Duration(days: streak - 1));
-      if (effectiveJoinDate.isAfter(streakAnchor)) {
-        effectiveJoinDate = streakAnchor;
-      }
-    }
-
-    // Guard B: High XP or Claimed Milestones means they are seasoned traders (not joined today)
-    if (isEffectiveToday && (xp > 150 || claimedMilestones.isNotEmpty)) {
-      effectiveJoinDate = now.subtract(const Duration(days: 14));
-    }
-
-    // Guard C: Existing trading or wallet history means they are not brand new today
-    if (isEffectiveToday && ((trades?.length ?? 0) >= 2 || (walletEntries?.length ?? 0) >= 2)) {
-      effectiveJoinDate = now.subtract(const Duration(days: 7));
-    }
-
-    return effectiveJoinDate;
   }
 
   bool _checkIsAdmin(UserState userState) {
@@ -299,12 +53,6 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
            profileName == 'admin';
   }
 
-  @override
-  void dispose() {
-    _marketRefreshTimer?.cancel();
-    super.dispose();
-  }
-
   void _openUserProfileModal(BuildContext context, Map<String, dynamic> player, {int? rank}) {
     final userId = (player['docId'] as String?)?.isNotEmpty == true
         ? player['docId'] as String
@@ -314,6 +62,7 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
 
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
@@ -325,67 +74,6 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
         initialRank: rank != null && rank > 0 ? '#$rank' : null,
       ),
     );
-  }
-
-  // ─── Parse + sort players using the cached price map ──────────────────────
-  List<Map<String, dynamic>> _parsePlayers(
-    List<QueryDocumentSnapshot> docs,
-    Map<String, double> priceMap,
-  ) {
-    final List<Map<String, dynamic>> players = [];
-
-    for (final doc in docs) {
-      try {
-        final data = doc.data() as Map<String, dynamic>;
-        final state = UserState.fromJson(data);
-
-        if (state.profile.email.toLowerCase() == 'admin@gmail.com' ||
-            state.profile.name.toLowerCase().contains('admin')) {
-          continue;
-        }
-
-        if (state.isBanned || state.profile.isBanned) {
-          continue;
-        }
-
-        double portfolioValue = 0;
-        for (final holding in state.holdings) {
-          final price = priceMap[holding.symbol] ?? holding.averagePrice;
-          portfolioValue += price * holding.quantity;
-        }
-
-        double futuresValue = 0;
-        for (final pos in state.futuresPositions) {
-          final price = priceMap[pos.symbol];
-          if (price != null) {
-            final isLong = pos.side == OrderSide.buy;
-            final diff = price - pos.entryPrice;
-            final pnl = isLong ? diff * pos.quantity : -diff * pos.quantity;
-            final currentValue = pos.margin + pnl;
-            futuresValue += currentValue > 0 ? currentValue : 0;
-          } else {
-            futuresValue += pos.margin;
-          }
-        }
-
-        final netWorth = state.profile.virtualBalance + portfolioValue + futuresValue;
-
-        players.add({
-          'docId': doc.id,
-          'uid': state.profile.publicUid.isNotEmpty ? state.profile.publicUid : doc.id,
-          'name': state.profile.name.isNotEmpty ? state.profile.name : 'Trader',
-          'netWorth': netWorth,
-          'xp': state.profile.xp,
-          'streak': state.profile.streak,
-          'photoUrl': state.profile.photoUrl,
-        });
-      } catch (_) {}
-    }
-
-    players.sort(
-      (a, b) => (b['netWorth'] as double).compareTo(a['netWorth'] as double),
-    );
-    return players;
   }
 
   @override
@@ -403,23 +91,23 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         toolbarHeight: 70,
-        title: const Column(
+        title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'LEADERBOARD',
+              'LEADERBOARD'.tr(),
               style: TextStyle(
-                color: Colors.white,
+                color: AppColors.textPrimary,
                 fontSize: 24,
                 fontWeight: FontWeight.w900,
                 letterSpacing: 1.5,
               ),
             ),
-            SizedBox(height: 2),
+            const SizedBox(height: 2),
             Text(
-              'Live Global Rankings',
+              'Live Global Rankings'.tr(),
               style: TextStyle(
-                color: Colors.white54,
+                color: AppColors.textSecondary,
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
                 letterSpacing: 0.5,
@@ -427,13 +115,69 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
             ),
           ],
         ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: Center(
+              child: Material(
+                color: Colors.transparent,
+                child: Ink(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF97316).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: const Color(0xFFF97316).withValues(alpha: 0.4),
+                      width: 1,
+                    ),
+                  ),
+                  child: InkWell(
+                    onTap: _openStreakScreen,
+                    borderRadius: BorderRadius.circular(20),
+                    splashColor: const Color(0xFFF97316).withValues(alpha: 0.35),
+                    highlightColor: const Color(0xFFF97316).withValues(alpha: 0.18),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.local_fire_department_rounded,
+                            color: Color(0xFFF97316),
+                            size: 16,
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            'Streaks'.tr(),
+                            style: const TextStyle(
+                              color: Color(0xFFF97316),
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                          const SizedBox(width: 2),
+                          const Icon(
+                            Icons.arrow_forward_ios_rounded,
+                            color: Color(0xFFF97316),
+                            size: 10,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
         centerTitle: false,
       ),
       body: SafeArea(
-        child: StreamBuilder<QuerySnapshot>(
-          stream: _usersStream,
-          builder: (context, snapshot) {
-            if (snapshot.hasError && _cachedPlayers.isEmpty) {
+        child: Builder(
+          builder: (context) {
+            final leaderboard = ref.watch(leaderboardProvider);
+
+            if (leaderboard.error != null && leaderboard.players.isEmpty) {
               return const Center(
                 child: Text(
                   'Error loading leaderboard.',
@@ -442,42 +186,15 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
               );
             }
 
-            if (snapshot.hasData && snapshot.data != _lastSnapshot) {
-              _lastSnapshot = snapshot.data;
-              if (_cachedPriceMap.isEmpty) {
-                final market = ref.read(marketProvider);
-                for (final stock in market) {
-                  _cachedPriceMap[stock.symbol] = stock.currentPrice;
-                }
-              }
-              _cachedPlayers = _parsePlayers(snapshot.data!.docs, _cachedPriceMap);
-              _computeMetricsForSnapshot(snapshot.data!);
-              
-              final currentName = userState.profile.name;
-              final currentPublicUid = userState.profile.publicUid;
-              _cachedMyRank = -1;
-              _cachedMyStats = null;
-
-              for (int i = 0; i < _cachedPlayers.length; i++) {
-                final p = _cachedPlayers[i];
-                if ((currentPublicUid.isNotEmpty && p['uid'] == currentPublicUid) ||
-                    (p['name'] == currentName)) {
-                  _cachedMyRank = i + 1;
-                  _cachedMyStats = p;
-                  break;
-                }
-              }
-            }
-
-            if (_cachedPlayers.isEmpty && !snapshot.hasData) {
+            if (leaderboard.isLoading && leaderboard.players.isEmpty) {
               return const Center(
                 child: CircularProgressIndicator(color: AppColors.primary),
               );
             }
 
-            final players = _cachedPlayers;
-            final myStats = _cachedMyStats;
-            final myRank = _cachedMyRank;
+            final players = leaderboard.players;
+            final myStats = leaderboard.myStats;
+            final myRank = leaderboard.myRank;
             final nonPodiumCount = players.length > 3 ? players.length - 3 : 0;
             final isAdmin = _checkIsAdmin(userState);
 
@@ -492,10 +209,10 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
                         if (isAdmin)
                           SliverToBoxAdapter(
                             child: _buildAdminStatsCard(
-                              totalTraders: _totalTradersCount,
-                              newTradersToday: _newTradersTodayCount,
-                              newTradersWeek: _newTradersWeekCount,
-                              bannedCount: _bannedUsersCount,
+                              totalTraders: leaderboard.totalTradersCount,
+                              newTradersToday: leaderboard.newTradersTodayCount,
+                              newTradersWeek: leaderboard.newTradersWeekCount,
+                              bannedCount: leaderboard.bannedUsersCount,
                             ),
                           ),
                         SliverToBoxAdapter(
@@ -510,14 +227,11 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
                             itemBuilder: (context, index) {
                               final player = players[index + 3];
                               final rank = index + 4;
-                              return RepaintBoundary(
-                                key: ValueKey(player['uid'] ?? 'player_$rank'),
-                                child: _buildListPlayer(
-                                  player,
-                                  rank,
-                                  userState.profile.name,
-                                  formatter,
-                                ),
+                              return _buildListPlayer(
+                                player,
+                                rank,
+                                userState.profile.name,
+                                formatter,
                               );
                             },
                           ),
@@ -559,14 +273,18 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
       margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 22),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFF13366A), Color(0xFF0F1722)],
-        ),
+        color: AppColors.isDarkMode ? null : AppColors.surface,
+        gradient: AppColors.isDarkMode
+            ? const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFF13366A), Color(0xFF0F1722)],
+              )
+            : null,
         borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.outline),
         boxShadow: const [
-          BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 4)),
+          BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 4)),
         ],
       ),
       child: Row(
@@ -600,9 +318,6 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
   ) {
     final isTop1 = rank == 1;
     final radius = isTop1 ? 40.0 : 32.0;
-    final hasPhoto =
-        player['photoUrl'] != null &&
-        player['photoUrl'].toString().trim().isNotEmpty;
 
     return GestureDetector(
       onTap: () => _openUserProfileModal(context, player, rank: rank),
@@ -620,8 +335,8 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
                 const SizedBox(width: 4),
                 Text(
                   isTop1 ? '1st' : (rank == 2 ? '2nd' : '3rd'),
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
                     fontSize: 15,
                     fontWeight: FontWeight.bold,
                   ),
@@ -635,27 +350,11 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
                 shape: BoxShape.circle,
                 border: Border.all(color: color, width: 2),
               ),
-              child: CircleAvatar(
+              child: AppAvatar(
+                avatarUrl: player['photoUrl'],
                 radius: radius,
+                fallbackName: player['name'],
                 backgroundColor: const Color(0xFF2B3139),
-                child: hasPhoto
-                    ? ClipOval(
-                        child: Image.network(
-                          player['photoUrl'],
-                          width: radius * 2,
-                          height: radius * 2,
-                          cacheWidth: 120,
-                          cacheHeight: 120,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => _initial(
-                            player['name'],
-                            radius * 0.7,
-                          ),
-                          loadingBuilder: (_, child, progress) =>
-                              progress == null ? child : _initial(player['name'], radius * 0.7),
-                        ),
-                      )
-                    : _initial(player['name'], radius * 0.7),
               ),
             ),
             const SizedBox(height: 10),
@@ -666,7 +365,7 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
                 child: Text(
                   player['name'],
                   style: TextStyle(
-                    color: Colors.white,
+                    color: AppColors.textPrimary,
                     fontWeight: FontWeight.w700,
                     fontSize: isTop1 ? 15 : 13.5,
                     height: 1.2,
@@ -678,32 +377,9 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
               ),
             ),
             const SizedBox(height: 4),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  '${player['xp']} XP',
-                  style: const TextStyle(
-                    color: Colors.white54,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                if ((player['streak'] as int? ?? 0) > 0) ...[
-                  const SizedBox(width: 4),
-                  Text(
-                    '🔥 ${player['streak']}',
-                    style: const TextStyle(
-                      color: Color(0xFFF59E0B),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ],
+            PrestigeLevelBadge(
+              level: (player['xp'] as int? ?? 0) ~/ 250 + 1,
+              isCompact: true,
             ),
             const SizedBox(height: 6),
             FittedBox(
@@ -733,9 +409,6 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
     AppCurrencyFormatter formatter,
   ) {
     final isMe = player['name'] == myName;
-    final hasPhoto =
-        player['photoUrl'] != null &&
-        player['photoUrl'].toString().trim().isNotEmpty;
     final rankString = rank.toString().padLeft(2, '0');
 
     final List<Color> edgeGradient;
@@ -750,81 +423,68 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
     }
 
     return GestureDetector(
+      key: ValueKey(player['uid'] ?? rank),
       onTap: () => _openUserProfileModal(context, player, rank: rank),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 12, left: 16, right: 16),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1E2329),
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: const [
-            BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2)),
-          ],
-        ),
-        child: Stack(
-        children: [
-          // Coloured left edge.
-          Positioned(
-            left: 0,
-            top: 0,
-            bottom: 0,
-            width: 6,
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: edgeGradient,
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                ),
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(16),
-                  bottomLeft: Radius.circular(16),
+          margin: const EdgeInsets.only(bottom: 12, left: 16, right: 16),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.outline),
+            boxShadow: const [
+              BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2)),
+            ],
+          ),
+          child: Stack(
+          children: [
+            // Coloured left edge.
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: 6,
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: edgeGradient,
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(16),
+                    bottomLeft: Radius.circular(16),
+                  ),
                 ),
               ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
-              children: [
-                const SizedBox(width: 8),
-                SizedBox(
-                  width: 44,
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      rankString,
-                      maxLines: 1,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 16,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                children: [
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 44,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        rankString,
+                        maxLines: 1,
+                        style: TextStyle(
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 16,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                CircleAvatar(
-                  radius: 18,
-                  backgroundColor: const Color(0xFF2B3139),
-                  child: hasPhoto
-                      ? ClipOval(
-                          child: Image.network(
-                            player['photoUrl'],
-                            width: 36,
-                            height: 36,
-                            cacheWidth: 100,
-                            cacheHeight: 100,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) =>
-                                _initial(player['name'], 14),
-                            loadingBuilder: (_, child, progress) =>
-                                progress == null
-                                    ? child
-                                    : _initial(player['name'], 14),
-                          ),
-                        )
-                      : _initial(player['name'], 14),
-                ),
+                  AppAvatar(
+                    avatarUrl: player['photoUrl'],
+                    radius: 18,
+                    fallbackName: player['name'],
+                    backgroundColor: AppColors.surfaceAlt,
+                    animate: false,
+                  ),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Column(
@@ -838,24 +498,13 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
                               style: TextStyle(
                                 color: isMe
                                     ? const Color(0xFF22C55E)
-                                    : Colors.white,
+                                    : AppColors.textPrimary,
                                 fontWeight: FontWeight.w700,
                                 fontSize: 15,
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                          if ((player['streak'] as int? ?? 0) > 0) ...[
-                            const SizedBox(width: 6),
-                            Text(
-                              '🔥 ${player['streak']}',
-                              style: const TextStyle(
-                                color: Color(0xFFF59E0B),
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ],
                           if (rank <= 3) ...[
                             const SizedBox(width: 4),
                             Icon(
@@ -892,14 +541,14 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
                           ],
                         ],
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${player['xp']} XP',
-                        style: const TextStyle(
-                          color: Colors.white54,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          PrestigeLevelBadge(
+                            level: (player['xp'] as int? ?? 0) ~/ 250 + 1,
+                            isCompact: true,
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -907,8 +556,8 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
                 const SizedBox(width: 12),
                 Text(
                   formatter.format(player['netWorth']),
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
                     fontWeight: FontWeight.w900,
                     fontSize: 15,
                   ),
@@ -929,9 +578,6 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
     int myRank,
     AppCurrencyFormatter formatter,
   ) {
-    final hasPhoto =
-        myStats['photoUrl'] != null &&
-        myStats['photoUrl'].toString().trim().isNotEmpty;
     final rankString = myRank.toString().padLeft(2, '0');
 
     return GestureDetector(
@@ -970,27 +616,11 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
               ),
             ),
           ),
-          CircleAvatar(
+          AppAvatar(
+            avatarUrl: myStats['photoUrl'],
             radius: 18,
+            fallbackName: myStats['name'],
             backgroundColor: const Color(0xFF2B3139),
-            child: hasPhoto
-                ? ClipOval(
-                    child: Image.network(
-                      myStats['photoUrl'],
-                      width: 36,
-                      height: 36,
-                      cacheWidth: 100,
-                      cacheHeight: 100,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) =>
-                          _initial(myStats['name'], 14),
-                      loadingBuilder: (_, child, progress) =>
-                          progress == null
-                              ? child
-                              : _initial(myStats['name'], 14),
-                    ),
-                  )
-                : _initial(myStats['name'], 14),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -1011,17 +641,6 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    if ((myStats['streak'] as int? ?? 0) > 0) ...[
-                      const SizedBox(width: 6),
-                      Text(
-                        '🔥 ${myStats['streak']}',
-                        style: const TextStyle(
-                          color: Color(0xFFF59E0B),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
                     if (myRank <= 3) ...[
                       const SizedBox(width: 4),
                       Icon(
@@ -1034,25 +653,16 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
                                 : const Color(0xFFF97316),
                       ),
                     ],
-                    const SizedBox(width: 6),
-                    const Text(
-                      'YOUR RANK',
-                      style: TextStyle(
-                        color: Color(0xFF64748B),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
                   ],
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  '${myStats['xp']} XP',
-                  style: const TextStyle(
-                    color: Colors.white54,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    PrestigeLevelBadge(
+                      level: (myStats['xp'] as int? ?? 0) ~/ 250 + 1,
+                      isCompact: true,
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -1073,20 +683,20 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
 }
 
   void _openSevenDaysMetricsSheet({required String initialMode}) {
+    final leaderboard = ref.read(leaderboardProvider);
+    final sheetHeight = MediaQuery.of(context).size.height * 0.88;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.88,
-        minChildSize: 0.5,
-        maxChildSize: 0.95,
-        expand: false,
-        builder: (_, scrollController) => PastSevenDaysMetricsSheet(
-          totalTraders: _totalTradersCount,
-          newTradersToday: _newTradersTodayCount,
-          newTradersWeek: _newTradersWeekCount,
-          pastSevenDays: _pastSevenDaysSummary,
+      builder: (context) => SizedBox(
+        height: sheetHeight,
+        child: PastSevenDaysMetricsSheet(
+          totalTraders: leaderboard.totalTradersCount,
+          newTradersToday: leaderboard.newTradersTodayCount,
+          newTradersWeek: leaderboard.newTradersWeekCount,
+          pastSevenDays: leaderboard.pastSevenDaysSummary,
+          allTraders: leaderboard.allTraders,
           initialMode: initialMode,
         ),
       ),
@@ -1105,10 +715,10 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
       margin: const EdgeInsets.fromLTRB(16, 4, 16, 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF16181C),
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: const Color(0xFF2F3336),
+          color: AppColors.outline,
           width: 1,
         ),
       ),
@@ -1146,17 +756,21 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
                 ),
               ),
               const SizedBox(width: 8),
-              const Expanded(
-                child: Text(
-                  'Global Metrics',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.2,
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _openSevenDaysMetricsSheet(initialMode: 'total'),
+                  child: Text(
+                    'Global Metrics',
+                    style: TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.2,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                 ),
               ),
               const SizedBox(width: 6),
@@ -1170,23 +784,23 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF202327),
+                    color: AppColors.surfaceAlt,
                     borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: const Color(0xFF2F3336)),
+                    border: Border.all(color: AppColors.outline),
                   ),
-                  child: const Row(
+                  child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
                         'Admin Panel',
                         style: TextStyle(
-                          color: Colors.white,
+                          color: AppColors.textPrimary,
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-                      SizedBox(width: 3),
-                      Icon(Icons.arrow_forward_rounded, color: Colors.white70, size: 12),
+                      const SizedBox(width: 3),
+                      Icon(Icons.arrow_forward_rounded, color: AppColors.textSecondary, size: 12),
                     ],
                   ),
                 ),
@@ -1271,23 +885,22 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
     Color? badgeColor,
     VoidCallback? onTap,
   }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        splashColor: iconColor.withValues(alpha: 0.15),
-        highlightColor: iconColor.withValues(alpha: 0.08),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 8),
-          decoration: BoxDecoration(
-            color: const Color(0xFF202327),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: const Color(0xFF2F3336),
-              width: 1,
-            ),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap?.call();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 8),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceAlt,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: AppColors.outline,
+            width: 1,
           ),
+        ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1317,7 +930,7 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
                 child: Text(
                   value,
                   style: TextStyle(
-                    color: badgeColor ?? Colors.white,
+                    color: badgeColor ?? AppColors.textPrimary,
                     fontSize: 17,
                     fontWeight: FontWeight.w800,
                     letterSpacing: -0.3,
@@ -1338,22 +951,6 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  // ─── Helper: avatar initials ───────────────────────────────────────────────
-
-  Widget _initial(String name, double fontSize) {
-    final letter =
-        name.trim().isNotEmpty ? name.trim()[0].toUpperCase() : '?';
-    return Text(
-      letter,
-      style: TextStyle(
-        color: Colors.white,
-        fontSize: fontSize,
-        fontWeight: FontWeight.w600,
-      ),
-    );
+      );
   }
 }

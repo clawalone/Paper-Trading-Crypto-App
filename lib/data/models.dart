@@ -34,6 +34,12 @@ class Stock {
     required this.supply,
     required this.rank,
     this.isLive = false,
+    this.exchange = 'Binance',
+    this.currency = 'USD',
+    this.fiftyTwoWeekHigh = 0.0,
+    this.fiftyTwoWeekLow = 0.0,
+    this.isStock = false,
+    this.marketState = 'REGULAR',
   });
 
   final String symbol;
@@ -50,6 +56,14 @@ class Stock {
   final double supply;
   final int rank;
   final bool isLive;
+  final String exchange;
+  final String currency;
+  final double fiftyTwoWeekHigh;
+  final double fiftyTwoWeekLow;
+  final bool isStock;
+  final String marketState;
+
+  bool get isMarketOpen => marketState.toUpperCase() == 'REGULAR' || marketState.toUpperCase() == 'OPEN';
 
   double get change => currentPrice - previousClose;
   double get changePercentage => (previousClose == 0 || previousClose.isNaN) ? 0.0 : ((change / previousClose) * 100);
@@ -62,6 +76,12 @@ class Stock {
     double? dayLow,
     int? volume,
     bool? isLive,
+    String? exchange,
+    String? currency,
+    double? fiftyTwoWeekHigh,
+    double? fiftyTwoWeekLow,
+    bool? isStock,
+    String? marketState,
   }) {
     return Stock(
       symbol: symbol,
@@ -78,6 +98,12 @@ class Stock {
       supply: supply,
       rank: rank,
       isLive: isLive ?? this.isLive,
+      exchange: exchange ?? this.exchange,
+      currency: currency ?? this.currency,
+      fiftyTwoWeekHigh: fiftyTwoWeekHigh ?? this.fiftyTwoWeekHigh,
+      fiftyTwoWeekLow: fiftyTwoWeekLow ?? this.fiftyTwoWeekLow,
+      isStock: isStock ?? this.isStock,
+      marketState: marketState ?? this.marketState,
     );
   }
 }
@@ -197,6 +223,70 @@ class SpotLimitOrder {
   );
 }
 
+class AmoOrder {
+  final String id;
+  final String symbol;
+  final OrderSide side;
+  final int quantity;
+  final double estimatedPrice;
+  final double reservedAmount;
+  final int leverage; // 1 for delivery, 2-5 for margin
+  final DateTime createdAt;
+  final String status; // 'queued', 'executed', 'cancelled'
+
+  const AmoOrder({
+    required this.id,
+    required this.symbol,
+    required this.side,
+    required this.quantity,
+    required this.estimatedPrice,
+    required this.reservedAmount,
+    this.leverage = 1,
+    required this.createdAt,
+    this.status = 'queued',
+  });
+
+  AmoOrder copyWith({
+    String? status,
+  }) {
+    return AmoOrder(
+      id: id,
+      symbol: symbol,
+      side: side,
+      quantity: quantity,
+      estimatedPrice: estimatedPrice,
+      reservedAmount: reservedAmount,
+      leverage: leverage,
+      createdAt: createdAt,
+      status: status ?? this.status,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'symbol': symbol,
+    'side': side.name,
+    'quantity': quantity,
+    'estimatedPrice': estimatedPrice,
+    'reservedAmount': reservedAmount,
+    'leverage': leverage,
+    'createdAt': createdAt.toIso8601String(),
+    'status': status,
+  };
+
+  factory AmoOrder.fromJson(Map<String, dynamic> json) => AmoOrder(
+    id: json['id'] as String,
+    symbol: json['symbol'] as String,
+    side: OrderSide.values.firstWhere((e) => e.name == json['side']),
+    quantity: json['quantity'] as int,
+    estimatedPrice: (json['estimatedPrice'] as num).toDouble(),
+    reservedAmount: (json['reservedAmount'] as num).toDouble(),
+    leverage: json['leverage'] as int? ?? 1,
+    createdAt: DateTime.parse(json['createdAt'] as String),
+    status: json['status'] as String? ?? 'queued',
+  );
+}
+
 class FuturesPosition {
   const FuturesPosition({
     required this.id,
@@ -251,6 +341,84 @@ class FuturesPosition {
     entryPrice: (json['entryPrice'] as num).toDouble(),
     quantity: (json['quantity'] as num).toDouble(),
     margin: (json['margin'] as num).toDouble(),
+  );
+}
+
+class FuturesLimitOrder {
+  const FuturesLimitOrder({
+    required this.id,
+    required this.symbol,
+    required this.side,
+    required this.leverage,
+    required this.quantity,
+    required this.targetPrice,
+    required this.reservedMargin,
+    required this.createdAt,
+    this.status = 'pending',
+    this.orderType = 'Limit',
+  });
+
+  final String id;
+  final String symbol;
+  final OrderSide side;
+  final int leverage;
+  final double quantity;
+  final double targetPrice;
+  final double reservedMargin;
+  final DateTime createdAt;
+  final String status; // 'pending', 'executed', 'cancelled'
+  final String orderType; // 'Limit', 'Stop-Limit'
+
+  FuturesLimitOrder copyWith({
+    String? id,
+    String? symbol,
+    OrderSide? side,
+    int? leverage,
+    double? quantity,
+    double? targetPrice,
+    double? reservedMargin,
+    DateTime? createdAt,
+    String? status,
+    String? orderType,
+  }) {
+    return FuturesLimitOrder(
+      id: id ?? this.id,
+      symbol: symbol ?? this.symbol,
+      side: side ?? this.side,
+      leverage: leverage ?? this.leverage,
+      quantity: quantity ?? this.quantity,
+      targetPrice: targetPrice ?? this.targetPrice,
+      reservedMargin: reservedMargin ?? this.reservedMargin,
+      createdAt: createdAt ?? this.createdAt,
+      status: status ?? this.status,
+      orderType: orderType ?? this.orderType,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'symbol': symbol,
+    'side': side.name,
+    'leverage': leverage,
+    'quantity': quantity,
+    'targetPrice': targetPrice,
+    'reservedMargin': reservedMargin,
+    'createdAt': createdAt.toIso8601String(),
+    'status': status,
+    'orderType': orderType,
+  };
+
+  factory FuturesLimitOrder.fromJson(Map<String, dynamic> json) => FuturesLimitOrder(
+    id: json['id'] as String,
+    symbol: json['symbol'] as String,
+    side: OrderSide.values.firstWhere((e) => e.name == json['side']),
+    leverage: json['leverage'] as int? ?? 1,
+    quantity: (json['quantity'] as num).toDouble(),
+    targetPrice: (json['targetPrice'] as num).toDouble(),
+    reservedMargin: (json['reservedMargin'] as num).toDouble(),
+    createdAt: DateTime.parse(json['createdAt'] as String),
+    status: json['status'] as String? ?? 'pending',
+    orderType: json['orderType'] as String? ?? 'Limit',
   );
 }
 
@@ -322,6 +490,29 @@ const ALL_BADGES = [
   Badge(id: 'b5', title: 'Diversified', description: 'Hold 3 different assets', icon: '🌐'),
   Badge(id: 'b6', title: 'Blitz Gladiator', description: 'Win a 1v1 Blitz Battle', icon: '⚔️'),
   Badge(id: 'b7', title: 'Weekly Podium', description: 'Finish Top 3 in Weekly Championship', icon: '🏆'),
+  // Stock Badges
+  Badge(id: 'b_stock1', title: 'Wall Street Debut', description: 'Make your first stock trade', icon: '🏛️'),
+  Badge(id: 'b_stock2', title: 'Dalal Street Tycoon', description: 'Invest in Indian Bluechip equities', icon: '🇮🇳'),
+  Badge(id: 'b_stock3', title: 'Wall Street Bull', description: 'Hold 5 major US Tech stocks', icon: '🐂'),
+  Badge(id: 'b_stock4', title: 'Night Owl Investor', description: 'Queue an After-Market Order (AMO)', icon: '🌙'),
+  Badge(id: 'b_stock5', title: 'Margin Master', description: 'Trade equities with 5x Intraday Margin', icon: '⚡'),
+  Badge(id: 'b_stock6', title: 'Value Investor', description: 'Build an equity portfolio across markets', icon: '💼'),
+  // Level Progression Badges (15 Career Tiers)
+  Badge(id: 'b_lvl2', title: 'Apprentice Trader', description: 'Reach Level 2 (250 XP) in trading career', icon: '🎖️'),
+  Badge(id: 'b_lvl3', title: 'Momentum Trader', description: 'Reach Level 3 (500 XP) in trading career', icon: '⚡'),
+  Badge(id: 'b_lvl5', title: 'Strategy Captain', description: 'Reach Level 5 (1,000 XP) in trading career', icon: '🧭'),
+  Badge(id: 'b_lvl11', title: 'Market Maestro', description: 'Reach Level 11 (2,500 XP) in trading career', icon: '🎯'),
+  Badge(id: 'b_lvl21', title: 'Pro Analyst', description: 'Reach Level 21 (5,000 XP) in trading career', icon: '📊'),
+  Badge(id: 'b_lvl31', title: 'Alpha Vanguard', description: 'Reach Level 31 (7,500 XP) in trading career', icon: '🛡️'),
+  Badge(id: 'b_lvl41', title: 'Crypto Whale', description: 'Reach Level 41 (10,000 XP) in trading career', icon: '🐋'),
+  Badge(id: 'b_lvl50', title: 'Grandmaster 50', description: 'Attain Level 50 (12,250 XP) in trading career', icon: '🔱'),
+  Badge(id: 'b_lvl65', title: 'Liquidity Sovereign', description: 'Reach Level 65 (16,000 XP) in trading career', icon: '🌊'),
+  Badge(id: 'b_lvl81', title: 'Apex Legend', description: 'Reach Level 81 (20,000 XP) in trading career', icon: '🔥'),
+  Badge(id: 'b_lvl100', title: 'Mythic Centurion', description: 'Attain legendary Level 100 (24,750 XP) status', icon: '👑'),
+  Badge(id: 'b_lvl125', title: 'Celestial Titan', description: 'Reach Level 125 (31,000 XP) in trading career', icon: '🪐'),
+  Badge(id: 'b_lvl150', title: 'Sovereign Overlord', description: 'Command Level 150 (37,250 XP) market supremacy', icon: '⚔️'),
+  Badge(id: 'b_lvl200', title: 'Infinity Archon', description: 'Ascend to Level 200 (49,750 XP) cosmic prestige', icon: '🌌'),
+  Badge(id: 'b_lvl250', title: 'Immortal Paragon', description: 'Reach the pinnacle Level 250 (62,250 XP) status', icon: '💎'),
 ];
 
 class UserProfile {
@@ -343,6 +534,7 @@ class UserProfile {
     this.email = '',
     this.photoUrl = '',
     this.bio = 'Passionate paper trader & crypto enthusiast.',
+    this.featuredBadgeId,
     this.blitzRating = 1000,
     this.blitzWins = 0,
     this.blitzLosses = 0,
@@ -350,6 +542,7 @@ class UserProfile {
     this.isBanned = false,
     this.banReason,
     this.bannedAt,
+    this.resetNotice,
     this.claimedXpMilestones = const {},
   });
   final String name;
@@ -369,6 +562,7 @@ class UserProfile {
   final String email;
   final String photoUrl;
   final String bio;
+  final String? featuredBadgeId;
   final int blitzRating;
   final int blitzWins;
   final int blitzLosses;
@@ -376,11 +570,23 @@ class UserProfile {
   final bool isBanned;
   final String? banReason;
   final String? bannedAt;
+  final Map<String, dynamic>? resetNotice;
   final Set<String> claimedXpMilestones;
 
+  static int calculateLevel(int xp) => (xp ~/ 250) + 1;
+  int get level => calculateLevel(xp);
+
   static String getEvolvedTitle(int xp) {
+    if (xp >= 62250) return 'Immortal Paragon';
+    if (xp >= 49750) return 'Infinity Archon';
+    if (xp >= 37250) return 'Sovereign Overlord';
+    if (xp >= 31000) return 'Celestial Titan';
+    if (xp >= 24750) return 'Mythic Centurion';
     if (xp >= 20000) return 'Apex Legend';
+    if (xp >= 16000) return 'Liquidity Sovereign';
+    if (xp >= 12250) return 'Grandmaster 50';
     if (xp >= 10000) return 'Crypto Whale';
+    if (xp >= 7500) return 'Alpha Vanguard';
     if (xp >= 5000) return 'Pro Analyst';
     if (xp >= 2500) return 'Market Maestro';
     if (xp >= 1000) return 'Strategy Captain';
@@ -409,6 +615,7 @@ class UserProfile {
     String? email,
     String? photoUrl,
     String? bio,
+    String? featuredBadgeId,
     int? blitzRating,
     int? blitzWins,
     int? blitzLosses,
@@ -416,6 +623,7 @@ class UserProfile {
     bool? isBanned,
     String? banReason,
     String? bannedAt,
+    Map<String, dynamic>? resetNotice,
     Set<String>? claimedXpMilestones,
   }) {
     return UserProfile(
@@ -436,6 +644,7 @@ class UserProfile {
       email: email ?? this.email,
       photoUrl: photoUrl ?? this.photoUrl,
       bio: bio ?? this.bio,
+      featuredBadgeId: featuredBadgeId ?? this.featuredBadgeId,
       blitzRating: blitzRating ?? this.blitzRating,
       blitzWins: blitzWins ?? this.blitzWins,
       blitzLosses: blitzLosses ?? this.blitzLosses,
@@ -443,6 +652,7 @@ class UserProfile {
       isBanned: isBanned ?? this.isBanned,
       banReason: banReason ?? this.banReason,
       bannedAt: bannedAt ?? this.bannedAt,
+      resetNotice: resetNotice ?? this.resetNotice,
       claimedXpMilestones: claimedXpMilestones ?? this.claimedXpMilestones,
     );
   }
@@ -465,6 +675,7 @@ class UserProfile {
     'email': email,
     'photoUrl': photoUrl,
     'bio': bio,
+    'featuredBadgeId': featuredBadgeId,
     'blitzRating': blitzRating,
     'blitzWins': blitzWins,
     'blitzLosses': blitzLosses,
@@ -472,6 +683,7 @@ class UserProfile {
     'isBanned': isBanned,
     'banReason': banReason,
     'bannedAt': bannedAt,
+    'resetNotice': resetNotice,
     'claimedXpMilestones': claimedXpMilestones.toList(),
   };
 
@@ -487,12 +699,13 @@ class UserProfile {
     completedMissions: Set<String>.from(json['completedMissions'] as List? ?? []),
     preferredCurrency: json['preferredCurrency'] as String? ?? 'USD',
     preferredLanguage: json['preferredLanguage'] as String? ?? 'English',
-    themeMode: json['themeMode'] as String? ?? 'Dark',
+    themeMode: json['themeMode'] as String? ?? 'System',
     lastDailyClaim: json['lastDailyClaim'] as String?,
     lastQuizAttempt: json['lastQuizAttempt'] as String?,
     email: json['email'] as String? ?? '',
     photoUrl: json['photoUrl'] as String? ?? '',
     bio: json['bio'] as String? ?? 'Passionate paper trader & crypto enthusiast.',
+    featuredBadgeId: json['featuredBadgeId'] as String?,
     blitzRating: json['blitzRating'] as int? ?? 1000,
     blitzWins: json['blitzWins'] as int? ?? 0,
     blitzLosses: json['blitzLosses'] as int? ?? 0,
@@ -500,6 +713,7 @@ class UserProfile {
     isBanned: json['isBanned'] as bool? ?? false,
     banReason: json['banReason'] as String?,
     bannedAt: json['bannedAt']?.toString(),
+    resetNotice: json['resetNotice'] != null ? Map<String, dynamic>.from(json['resetNotice'] as Map) : null,
     claimedXpMilestones: Set<String>.from(json['claimedXpMilestones'] as List? ?? []),
   );
 }

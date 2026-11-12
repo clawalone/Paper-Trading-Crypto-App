@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:math';
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
 
@@ -9,6 +9,7 @@ import '../../core/app_review_manager.dart';
 import '../../core/coin_icon.dart';
 import '../../core/currency_formatters.dart';
 import '../../data/market_provider.dart';
+import '../../data/stock_market_provider.dart';
 import '../../data/models.dart';
 import '../../data/user_provider.dart';
 import 'futures_position_card.dart';
@@ -75,7 +76,7 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
   void _showOrderTypeSheet(BuildContext context, Stock stock) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1E2329),
+      backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -89,17 +90,17 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
+                  Text(
                     'Order Type',
                     style: TextStyle(
-                      color: Colors.white,
+                      color: AppColors.textPrimary,
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                   IconButton(
                     onPressed: () => Navigator.pop(ctx),
-                    icon: const Icon(Icons.close, color: Colors.white54, size: 20),
+                    icon: const Icon(Icons.close, color: AppColors.subtle, size: 20),
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
                   ),
@@ -160,16 +161,16 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF2B3139) : const Color(0xFF141A21),
+          color: isSelected ? AppColors.surfaceAlt : AppColors.surface,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: isSelected ? AppColors.primary : const Color(0xFF2B3139),
+            color: isSelected ? AppColors.primary : AppColors.outline,
             width: isSelected ? 1.5 : 1,
           ),
         ),
         child: Row(
           children: [
-            Icon(icon, color: isSelected ? AppColors.primary : Colors.white54, size: 20),
+            Icon(icon, color: isSelected ? AppColors.primary : AppColors.subtle, size: 20),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -178,7 +179,7 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
                   Text(
                     title,
                     style: TextStyle(
-                      color: isSelected ? AppColors.primary : Colors.white,
+                      color: isSelected ? AppColors.primary : AppColors.textPrimary,
                       fontWeight: FontWeight.bold,
                       fontSize: 14,
                     ),
@@ -186,7 +187,7 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
                   const SizedBox(height: 2),
                   Text(
                     subtitle,
-                    style: const TextStyle(color: Colors.white54, fontSize: 11),
+                    style: TextStyle(color: AppColors.subtle, fontSize: 11),
                   ),
                 ],
               ),
@@ -204,7 +205,7 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
 
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1E2329),
+      backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -222,10 +223,10 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
+                      Text(
                         'Adjust Leverage',
                         style: TextStyle(
-                          color: Colors.white,
+                          color: AppColors.textPrimary,
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
                         ),
@@ -263,13 +264,14 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                           decoration: BoxDecoration(
-                            color: isSel ? AppColors.primary : const Color(0xFF2B3139),
+                            color: isSel ? AppColors.primary : AppColors.surfaceAlt,
                             borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: isSel ? AppColors.primary : AppColors.outline),
                           ),
                           child: Text(
                             '${lev}x',
                             style: TextStyle(
-                              color: isSel ? Colors.black : Colors.white,
+                              color: isSel ? Colors.black : AppColors.textPrimary,
                               fontWeight: FontWeight.bold,
                               fontSize: 12,
                             ),
@@ -283,12 +285,12 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
 
                   // Fine slider
                   SliderTheme(
-                    data: const SliderThemeData(
+                    data: SliderThemeData(
                       trackHeight: 3,
-                      thumbShape: RoundSliderThumbShape(enabledThumbRadius: 8),
-                      overlayShape: RoundSliderOverlayShape(overlayRadius: 16),
+                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
                       activeTrackColor: AppColors.primary,
-                      inactiveTrackColor: Color(0xFF2B3139),
+                      inactiveTrackColor: AppColors.outline,
                       thumbColor: AppColors.primary,
                     ),
                     child: Slider(
@@ -373,36 +375,64 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
   
   @override
   Widget build(BuildContext context) {
-    final market = ref.watch(marketProvider);
+    final cryptoMarket = ref.watch(marketProvider);
+    final stockMarket = ref.watch(stockMarketProvider);
     final userState = ref.watch(userProvider);
     final cleanTarget = CoinIcon.cleanSymbol(widget.stockSymbol);
-    final stock = market.firstWhere(
+
+    final allMarket = [...stockMarket, ...cryptoMarket];
+    final market = allMarket;
+    final stock = allMarket.firstWhere(
       (s) {
-        final cleanS = CoinIcon.cleanSymbol(s.symbol);
         if (s.symbol.toUpperCase() == widget.stockSymbol.toUpperCase()) return true;
+        final cleanS = CoinIcon.cleanSymbol(s.symbol);
         if (cleanS == cleanTarget) return true;
         if (cleanS.replaceAll('1000', '') == cleanTarget.replaceAll('1000', '')) return true;
         if (s.name.toUpperCase() == cleanTarget) return true;
-        if (s.symbol.toUpperCase().startsWith(cleanTarget)) return true;
+        if (s.name.toUpperCase() == widget.stockSymbol.toUpperCase()) return true;
+        if (s.symbol.toUpperCase().replaceAll('.NS', '') == widget.stockSymbol.toUpperCase().replaceAll('.NS', '')) return true;
         return false;
       },
-      orElse: () => market.isNotEmpty
-          ? market.first
-          : Stock(
-              symbol: widget.stockSymbol,
-              name: widget.stockSymbol,
-              category: 'Crypto',
-              currentPrice: 100.0 * CurrencyFormatters.usdToInr,
-              previousClose: 100.0 * CurrencyFormatters.usdToInr,
-              dayHigh: 105.0 * CurrencyFormatters.usdToInr,
-              dayLow: 95.0 * CurrencyFormatters.usdToInr,
-              volume: 150000,
-              history: const [],
-              candleHistory: const [],
-              about: '',
-              supply: 1000000,
-              rank: 999,
-            ),
+      orElse: () {
+        final meta = kStockAssets.cast<StockAssetMeta?>().firstWhere(
+          (m) => m != null && (m.symbol.toUpperCase() == widget.stockSymbol.toUpperCase() || CoinIcon.cleanSymbol(m.symbol) == cleanTarget),
+          orElse: () => null,
+        );
+        if (meta != null) {
+          return Stock(
+            symbol: meta.symbol,
+            name: meta.name,
+            category: meta.category,
+            currentPrice: meta.defaultPrice,
+            previousClose: meta.defaultPrice,
+            dayHigh: meta.defaultPrice * 1.02,
+            dayLow: meta.defaultPrice * 0.98,
+            volume: 1000000,
+            history: const [],
+            candleHistory: const [],
+            about: meta.name,
+            supply: 10000000,
+            rank: 99,
+            isStock: true,
+            currency: meta.currency,
+          );
+        }
+        return Stock(
+          symbol: widget.stockSymbol,
+          name: widget.stockSymbol,
+          category: 'Crypto',
+          currentPrice: 100.0 * CurrencyFormatters.usdToInr,
+          previousClose: 100.0 * CurrencyFormatters.usdToInr,
+          dayHigh: 105.0 * CurrencyFormatters.usdToInr,
+          dayLow: 95.0 * CurrencyFormatters.usdToInr,
+          volume: 150000,
+          history: const [],
+          candleHistory: const [],
+          about: '',
+          supply: 1000000,
+          rank: 999,
+        );
+      },
     );
     final formatter = AppCurrencyFormatter(userState.profile.preferredCurrency);
     final good = stock.changePercentage >= 0;
@@ -460,7 +490,7 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
                 const SizedBox(height: 16),
                 Text(
                   'Unable to load ${stock.symbol}-PERP chart',
-                  style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                  style: TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
                 const Text(
@@ -494,6 +524,16 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
     final minPrice = effectiveCandles.isEmpty ? 0.0 : effectiveCandles.map((c) => c.low).reduce(min);
     final maxPrice = effectiveCandles.isEmpty ? 0.0 : effectiveCandles.map((c) => c.high).reduce(max);
 
+    DateTime? nativeVisibleMin;
+    DateTime? nativeVisibleMax;
+    if (effectiveCandles.length > 35) {
+      nativeVisibleMin = effectiveCandles[effectiveCandles.length - 35].date;
+      final lastDate = effectiveCandles.last.date;
+      final secondLastDate = effectiveCandles[effectiveCandles.length - 2].date;
+      final diffMin = lastDate.difference(secondLastDate).inMinutes.clamp(1, 1440);
+      nativeVisibleMax = lastDate.add(Duration(minutes: diffMin * 4));
+    }
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -503,7 +543,14 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
           children: [
             CoinIcon(symbol: stock.symbol, size: 22),
             const SizedBox(width: 8),
-            Text('${stock.symbol}-PERP', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+            Flexible(
+              child: Text(
+                stock.isStock ? '${stock.symbol} Margin' : '${stock.symbol}-PERP',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17),
+              ),
+            ),
             const SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -531,12 +578,12 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
             },
             icon: Icon(
               isWatched ? Icons.star : Icons.star_border,
-              color: isWatched ? Colors.amber : Colors.white70,
+              color: isWatched ? Colors.amber : AppColors.subtle,
             ),
           ),
           PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert, color: Colors.white),
-            color: const Color(0xFF1E2329),
+            icon: Icon(Icons.more_vert, color: AppColors.textPrimary),
+            color: AppColors.surface,
             onSelected: (value) {
               if (value == 'contract_info') {
                 _showContractInfoSheet(context, stock, formatter);
@@ -554,33 +601,33 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
               }
             },
             itemBuilder: (context) => [
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'contract_info',
                 child: Row(
                   children: [
-                    Icon(Icons.info_outline, color: Color(0xFF848E9C), size: 20),
-                    SizedBox(width: 12),
-                    Text('Contract Info', style: TextStyle(color: Colors.white, fontSize: 14)),
+                    const Icon(Icons.info_outline, color: Color(0xFF848E9C), size: 20),
+                    const SizedBox(width: 12),
+                    Text('Contract Info', style: TextStyle(color: AppColors.textPrimary, fontSize: 14)),
                   ],
                 ),
               ),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'reset_zoom',
                 child: Row(
                   children: [
-                    Icon(Icons.center_focus_strong, color: Color(0xFF848E9C), size: 20),
-                    SizedBox(width: 12),
-                    Text('Reset Chart Zoom', style: TextStyle(color: Colors.white, fontSize: 14)),
+                    const Icon(Icons.center_focus_strong, color: Color(0xFF848E9C), size: 20),
+                    const SizedBox(width: 12),
+                    Text('Reset Chart Zoom', style: TextStyle(color: AppColors.textPrimary, fontSize: 14)),
                   ],
                 ),
               ),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'share',
                 child: Row(
                   children: [
-                    Icon(Icons.share, color: Color(0xFF848E9C), size: 20),
-                    SizedBox(width: 12),
-                    Text('Share Details', style: TextStyle(color: Colors.white, fontSize: 14)),
+                    const Icon(Icons.share, color: Color(0xFF848E9C), size: 20),
+                    const SizedBox(width: 12),
+                    Text('Share Details', style: TextStyle(color: AppColors.textPrimary, fontSize: 14)),
                   ],
                 ),
               ),
@@ -597,7 +644,7 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
               Container(
                 height: 36,
                 padding: const EdgeInsets.symmetric(horizontal: 10),
-                color: const Color(0xFF141A21),
+                color: AppColors.surfaceAlt,
                 child: Row(
                   children: [
                     _buildFuturesChartToggle(
@@ -614,7 +661,7 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
                     ),
                     const Spacer(),
                     IconButton(
-                      icon: const Icon(Icons.fullscreen, color: Colors.white70, size: 18),
+                      icon: Icon(Icons.fullscreen, color: AppColors.textPrimary, size: 18),
                       tooltip: 'Fullscreen Chart',
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(),
@@ -636,7 +683,7 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
               Expanded(
                 child: _useTradingView
                     ? TradingViewChart(
-                        key: ValueKey('futures_tv_${stock.symbol}'),
+                        key: ValueKey('futures_tv_${stock.symbol}_${AppColors.isDarkMode}'),
                         symbol: stock.symbol,
                         isFutures: true,
                         enableDrawingToolbar: false,
@@ -653,7 +700,7 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
                               trackballBehavior: TrackballBehavior(
                                 enable: true,
                                 activationMode: ActivationMode.singleTap,
-                                tooltipSettings: const InteractiveTooltip(enable: true, color: AppColors.surface),
+                                tooltipSettings: InteractiveTooltip(enable: true, color: AppColors.surface),
                               ),
                               zoomPanBehavior: _zoomPanBehavior,
                               plotAreaBorderWidth: 0,
@@ -661,6 +708,8 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
                               primaryXAxis: DateTimeAxis(
                                 onRendererCreated: (controller) => _xAxisController = controller,
                                 isVisible: true,
+                                initialVisibleMinimum: nativeVisibleMin,
+                                initialVisibleMaximum: nativeVisibleMax,
                                 majorGridLines: const MajorGridLines(width: 0),
                               ),
                               primaryYAxis: NumericAxis(
@@ -669,7 +718,7 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
                                 opposedPosition: true,
                                 minimum: minPrice * 0.99,
                                 maximum: maxPrice * 1.01,
-                                majorGridLines: const MajorGridLines(width: 0.5, color: Colors.white10),
+                                majorGridLines: MajorGridLines(width: 0.5, color: AppColors.outline),
                               ),
                               axes: <ChartAxis>[
                                 NumericAxis(
@@ -724,7 +773,7 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
                               },
                               child: Container(
                                 alignment: Alignment.center,
-                                child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
+                                child: Container(width: 40, height: 4, decoration: BoxDecoration(color: AppColors.outline, borderRadius: BorderRadius.circular(2))),
                               ),
                             ),
                           ),
@@ -762,6 +811,7 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
             if (stockIdx < 0) return true;
             return !pos.isLiquidated(market[stockIdx].currentPrice);
           }).length;
+          final pendingOrdersCount = userState.futuresLimitOrders.where((o) => o.status == 'pending').length;
 
           if (isDesktop) {
             return Container(
@@ -783,15 +833,15 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
                                 Container(
-                                  decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFF2B3139)))),
+                                  decoration: BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.outline))),
                                   child: Row(
                                     children: [
                                       _buildTab(1, 'Positions ($activePositionsCount)'),
-                                      _buildTab(2, 'Orders (0)'),
+                                      _buildTab(2, 'Orders ($pendingOrdersCount)'),
                                     ],
                                   ),
                                 ),
-                                Expanded(child: _buildPositionsTab(userState, market, formatter)),
+                                Expanded(child: _selectedTab == 2 ? _buildOrdersTab(userState, market, formatter) : _buildPositionsTab(userState, market, formatter)),
                               ],
                             ),
                           ),
@@ -823,17 +873,21 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
               SizedBox(height: _chartHeight, child: chartWidget),
               _buildChartResizeHandle(),
               Container(
-                decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Colors.white10))),
+                decoration: BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.outline))),
                 child: Row(
                   children: [
                     _buildTab(0, 'Trade'),
                     _buildTab(1, 'Positions ($activePositionsCount)'),
-                    _buildTab(2, 'Orders (0)'),
+                    _buildTab(2, 'Orders ($pendingOrdersCount)'),
                   ],
                 ),
               ),
               Expanded(
-                child: _selectedTab == 0 ? _buildTradeInterface(stock, userState, formatter) : _buildPositionsTab(userState, market, formatter),
+                child: _selectedTab == 0
+                    ? _buildTradeInterface(stock, userState, formatter)
+                    : (_selectedTab == 2
+                        ? _buildOrdersTab(userState, market, formatter)
+                        : _buildPositionsTab(userState, market, formatter)),
               ),
             ],
           );
@@ -867,20 +921,26 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
           alignment: Alignment.center,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 150),
-            width: _isResizingChart ? 56 : 40,
-            height: _isResizingChart ? 5 : 4,
+            width: _isResizingChart ? 64 : 48,
+            height: _isResizingChart ? 6 : 5,
             decoration: BoxDecoration(
-              color: _isResizingChart ? AppColors.primary : Colors.white.withValues(alpha: 0.3),
-              borderRadius: BorderRadius.circular(3),
-              boxShadow: _isResizingChart
-                  ? [
-                      BoxShadow(
-                        color: AppColors.primary.withValues(alpha: 0.5),
-                        blurRadius: 8,
-                        spreadRadius: 1,
-                      )
-                    ]
-                  : null,
+              color: _isResizingChart
+                  ? AppColors.primary
+                  : AppColors.primary.withValues(alpha: AppColors.isDarkMode ? 0.40 : 0.25),
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(
+                color: _isResizingChart
+                    ? AppColors.primary
+                    : AppColors.primary.withValues(alpha: AppColors.isDarkMode ? 0.85 : 0.70),
+                width: 1.2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.primary.withValues(alpha: _isResizingChart ? 0.5 : 0.18),
+                  blurRadius: _isResizingChart ? 8 : 4,
+                  spreadRadius: _isResizingChart ? 1 : 0,
+                ),
+              ],
             ),
           ),
         ),
@@ -900,8 +960,9 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
-          color: active ? const Color(0xFF2B3139) : Colors.transparent,
+          color: active ? AppColors.surfaceAlt : Colors.transparent,
           borderRadius: BorderRadius.circular(4),
+          border: active ? Border.all(color: AppColors.outline) : null,
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -927,7 +988,7 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
             Text(
               title,
               style: TextStyle(
-                color: active ? Colors.white : Colors.white54,
+                color: active ? AppColors.textPrimary : AppColors.subtle,
                 fontSize: 12,
                 fontWeight: active ? FontWeight.bold : FontWeight.w500,
               ),
@@ -947,7 +1008,13 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
         decoration: BoxDecoration(
           border: Border(bottom: BorderSide(color: isSelected ? AppColors.primary : Colors.transparent, width: 2)),
         ),
-        child: Text(title, style: TextStyle(fontWeight: FontWeight.bold, color: isSelected ? Colors.white : Colors.white54)),
+        child: Text(
+          title,
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: isSelected ? AppColors.textPrimary : AppColors.subtle,
+          ),
+        ),
       ),
     );
   }
@@ -1016,10 +1083,10 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
                     ),
                   ),
                   const SizedBox(width: 4),
-                  const Text('Price', style: TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.w600)),
+                  Text('Price', style: TextStyle(color: AppColors.subtle, fontSize: 11, fontWeight: FontWeight.w600)),
                 ],
               ),
-              const Text('Amount', style: TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.w600)),
+              Text('Amount', style: TextStyle(color: AppColors.subtle, fontSize: 11, fontWeight: FontWeight.w600)),
             ],
           ),
           const SizedBox(height: 8),
@@ -1060,10 +1127,16 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
     final isMarketOnline = ref.watch(marketOnlineProvider);
     final currSym = CurrencyFormatters.getSymbol(userState.profile.preferredCurrency);
     final customLimitPrice = _orderType != 'Market' ? double.tryParse(_limitPriceController.text) : null;
-    final execPrice = (customLimitPrice != null && customLimitPrice > 0) ? customLimitPrice : stock.currentPrice;
-    final quantity = _isInrInput ? (_inputVal > 0 ? _inputVal / execPrice : 0.0) : _inputVal;
-    final marginRequired = (quantity > 0) ? (quantity * execPrice) / _leverage : 0.0;
-    final canExecute = isMarketOnline && stock.isLive && quantity > 0 && marginRequired <= userState.profile.virtualBalance;
+    final targetPrice = (_orderType != 'Market' && customLimitPrice != null && customLimitPrice > 0)
+        ? customLimitPrice
+        : stock.currentPrice;
+    final quantity = _isInrInput ? (_inputVal > 0 ? _inputVal / targetPrice : 0.0) : _inputVal;
+    final marginRequired = (quantity > 0) ? (quantity * targetPrice) / _leverage : 0.0;
+    final hasValidPrice = _orderType == 'Market' || (customLimitPrice != null && customLimitPrice > 0);
+    final isLimitPlausible = _orderType == 'Market' || (
+      targetPrice >= stock.currentPrice * 0.70 && targetPrice <= stock.currentPrice * 1.30
+    );
+    final canExecute = isMarketOnline && stock.isLive && stock.currentPrice > 0 && quantity > 0 && marginRequired <= userState.profile.virtualBalance && hasValidPrice && isLimitPlausible;
     final isLong = _side == OrderSide.buy;
 
     return Padding(
@@ -1082,11 +1155,12 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 10),
                         decoration: BoxDecoration(
-                          color: isLong ? const Color(0xFF2B3139) : Colors.transparent,
+                          color: isLong ? AppColors.surfaceAlt : Colors.transparent,
                           borderRadius: BorderRadius.circular(8),
+                          border: isLong ? Border.all(color: AppColors.outline) : null,
                         ),
                         alignment: Alignment.center,
-                        child: Text('Long', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isLong ? AppColors.profit : Colors.white54)),
+                        child: Text('Long', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isLong ? AppColors.profit : AppColors.subtle)),
                       ),
                     ),
                   ),
@@ -1096,11 +1170,12 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 10),
                         decoration: BoxDecoration(
-                          color: !isLong ? const Color(0xFF2B3139) : Colors.transparent,
+                          color: !isLong ? AppColors.surfaceAlt : Colors.transparent,
                           borderRadius: BorderRadius.circular(8),
+                          border: !isLong ? Border.all(color: AppColors.outline) : null,
                         ),
                         alignment: Alignment.center,
-                        child: Text('Short', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: !isLong ? AppColors.loss : Colors.white54)),
+                        child: Text('Short', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: !isLong ? AppColors.loss : AppColors.subtle)),
                       ),
                     ),
                   ),
@@ -1116,20 +1191,24 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
                     onTap: () => _showOrderTypeSheet(context, stock),
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                      decoration: BoxDecoration(color: const Color(0xFF2B3139), borderRadius: BorderRadius.circular(6)),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceAlt,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: AppColors.outline),
+                      ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Expanded(
                             child: Text(
                               _orderType,
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.textPrimary),
                               overflow: TextOverflow.ellipsis,
                               maxLines: 1,
                             ),
                           ),
                           const SizedBox(width: 2),
-                          const Icon(Icons.arrow_drop_down, size: 16),
+                          Icon(Icons.arrow_drop_down, size: 16, color: AppColors.textPrimary),
                         ],
                       ),
                     ),
@@ -1141,20 +1220,24 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
                     onTap: () => _showLeverageSheet(context),
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                      decoration: BoxDecoration(color: const Color(0xFF2B3139), borderRadius: BorderRadius.circular(6)),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceAlt,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: AppColors.outline),
+                      ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Expanded(
                             child: Text(
                               '${_leverage.toInt()}x',
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.textPrimary),
                               overflow: TextOverflow.ellipsis,
                               maxLines: 1,
                             ),
                           ),
                           const SizedBox(width: 2),
-                          const Icon(Icons.arrow_drop_down, size: 16),
+                          Icon(Icons.arrow_drop_down, size: 16, color: AppColors.textPrimary),
                         ],
                       ),
                     ),
@@ -1168,7 +1251,7 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Limit Price ($currSym)', style: const TextStyle(fontSize: 12, color: Colors.white54, fontWeight: FontWeight.w600)),
+                  Text('Limit Price ($currSym)', style: TextStyle(fontSize: 12, color: AppColors.subtle, fontWeight: FontWeight.w600)),
                   GestureDetector(
                     onTap: () => setState(() => _limitPriceController.text = stock.currentPrice.toStringAsFixed(2)),
                     child: const Text('Use Last Price', style: TextStyle(fontSize: 11, color: AppColors.primary, fontWeight: FontWeight.bold)),
@@ -1179,18 +1262,19 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
               TextField(
                 controller: _limitPriceController,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
                 decoration: InputDecoration(
                   isDense: true,
                   contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                   hintText: stock.currentPrice.toStringAsFixed(2),
-                  hintStyle: const TextStyle(color: Colors.white24, fontSize: 13),
+                  hintStyle: TextStyle(color: AppColors.subtle, fontSize: 13),
                   filled: true,
-                  fillColor: const Color(0xFF2B3139),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide.none),
+                  fillColor: AppColors.surfaceAlt,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: AppColors.outline)),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: AppColors.outline)),
                   focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: isLong ? AppColors.profit : AppColors.loss, width: 1.5)),
                   suffixText: currSym,
-                  suffixStyle: const TextStyle(color: Colors.white54, fontWeight: FontWeight.bold, fontSize: 12),
+                  suffixStyle: TextStyle(color: AppColors.subtle, fontWeight: FontWeight.bold, fontSize: 12),
                 ),
                 onChanged: (_) => setState(() {}),
               ),
@@ -1198,12 +1282,19 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
             const SizedBox(height: 16),
             // Slider for Leverage
             SliderTheme(
-              data: const SliderThemeData(trackHeight: 2, thumbShape: RoundSliderThumbShape(enabledThumbRadius: 6), overlayShape: RoundSliderOverlayShape(overlayRadius: 14)),
+              data: SliderThemeData(
+                trackHeight: 2,
+                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+                activeTrackColor: AppColors.primary,
+                inactiveTrackColor: AppColors.outline,
+                thumbColor: AppColors.primary,
+              ),
               child: Slider(
                 value: _leverage,
                 min: 1, max: 100,
                 activeColor: AppColors.primary,
-                inactiveColor: const Color(0xFF2B3139),
+                inactiveColor: AppColors.outline,
                 onChanged: (v) => setState(() => _leverage = v),
               ),
             ),
@@ -1214,7 +1305,7 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
               children: [
                 Text(
                   _isInrInput ? 'Size ($currSym)' : 'Size (${stock.symbol})',
-                  style: const TextStyle(fontSize: 12, color: Colors.white54, fontWeight: FontWeight.w600),
+                  style: TextStyle(fontSize: 12, color: AppColors.subtle, fontWeight: FontWeight.w600),
                 ),
                 GestureDetector(
                   onTap: () => setState(() {
@@ -1239,21 +1330,22 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
             TextField(
               controller: _qtyController,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
               decoration: InputDecoration(
                 isDense: true,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                 hintText: _isInrInput ? 'Enter amount in $currSym' : 'Enter qty in ${stock.symbol}',
-                hintStyle: const TextStyle(color: Colors.white24, fontSize: 13),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide.none),
+                hintStyle: TextStyle(color: AppColors.subtle, fontSize: 13),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: AppColors.outline)),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: AppColors.outline)),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(6),
                   borderSide: BorderSide(color: isLong ? AppColors.profit : AppColors.loss, width: 1.5),
                 ),
                 filled: true,
-                fillColor: const Color(0xFF2B3139),
+                fillColor: AppColors.surfaceAlt,
                 suffixText: _isInrInput ? currSym : stock.symbol,
-                suffixStyle: const TextStyle(color: Colors.white54, fontWeight: FontWeight.bold, fontSize: 12),
+                suffixStyle: TextStyle(color: AppColors.subtle, fontWeight: FontWeight.bold, fontSize: 12),
               ),
               onChanged: (_) => setState(() {}),
             ),
@@ -1263,8 +1355,9 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF2B3139).withValues(alpha: 0.5),
+                  color: AppColors.surfaceAlt,
                   borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: AppColors.outline),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1272,9 +1365,9 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
                     Expanded(
                       child: Text(
                         _isInrInput
-                            ? '≈ ${(_inputVal / execPrice).toStringAsFixed(6)} ${stock.symbol}'
-                            : '≈ ${formatter.format(_inputVal * execPrice)}',
-                        style: const TextStyle(fontSize: 12, color: Colors.white70),
+                            ? '≈ ${(_inputVal / targetPrice).toStringAsFixed(6)} ${stock.symbol}'
+                            : '≈ ${formatter.format(_inputVal * targetPrice)}',
+                        style: TextStyle(fontSize: 12, color: AppColors.textPrimary),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -1290,15 +1383,16 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
                   child: Padding(
                     padding: const EdgeInsets.only(right: 6),
                     child: GestureDetector(
-                      onTap: () => _setPercent(pct / 100, userState.profile.virtualBalance, execPrice),
+                      onTap: () => _setPercent(pct / 100, userState.profile.virtualBalance, targetPrice),
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 6),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF2B3139),
+                          color: AppColors.surfaceAlt,
                           borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: AppColors.outline),
                         ),
                         alignment: Alignment.center,
-                        child: Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white70)),
+                        child: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
                       ),
                     ),
                   ),
@@ -1309,7 +1403,7 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Margin Required', style: TextStyle(fontSize: 12, color: Colors.white54)),
+                Text('Margin Required', style: TextStyle(fontSize: 12, color: AppColors.subtle)),
                 const SizedBox(height: 4),
                 Text(
                   formatter.format(marginRequired),
@@ -1322,7 +1416,7 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Available Balance', style: TextStyle(fontSize: 12, color: Colors.white54)),
+                Text('Available Balance', style: TextStyle(fontSize: 12, color: AppColors.subtle)),
                 const SizedBox(height: 4),
                 Text(
                   formatter.format(userState.profile.virtualBalance),
@@ -1358,37 +1452,72 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
               ),
             FilledButton(
               onPressed: canExecute ? () {
-                final success = ref.read(userProvider.notifier).openFuturesPosition(
-                  stock,
-                  _side,
-                  _leverage.toInt(),
-                  quantity,
-                  customPrice: customLimitPrice,
-                  orderType: _orderType,
-                );
-                if (success) {
-                  _qtyController.clear();
-                  final execPriceStr = customLimitPrice != null ? ' @ ${formatter.format(customLimitPrice)}' : '';
-                  ScaffoldMessenger.of(context).clearSnackBars();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('$_orderType Position opened successfully$execPriceStr!'),
-                      backgroundColor: AppColors.profit,
-                      behavior: SnackBarBehavior.floating,
-                    ),
+                if (_orderType == 'Market') {
+                  final success = ref.read(userProvider.notifier).openFuturesPosition(
+                    stock,
+                    _side,
+                    _leverage.toInt(),
+                    quantity,
+                    orderType: 'Market',
                   );
+                  if (success) {
+                    _qtyController.clear();
+                    ScaffoldMessenger.of(context).clearSnackBars();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Market Position opened successfully!'),
+                        backgroundColor: AppColors.profit,
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                } else {
+                  final target = customLimitPrice ?? stock.currentPrice;
+                  final success = ref.read(userProvider.notifier).placeFuturesLimitOrder(
+                    stock: stock,
+                    side: _side,
+                    leverage: _leverage.toInt(),
+                    quantity: quantity,
+                    targetPrice: target,
+                    orderType: _orderType,
+                  );
+                  if (success) {
+                    _qtyController.clear();
+                    final isMarketable = (_side == OrderSide.buy && target >= stock.currentPrice) ||
+                                         (_side == OrderSide.sell && target <= stock.currentPrice);
+                    ScaffoldMessenger.of(context).clearSnackBars();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          isMarketable
+                              ? '$_orderType Order executed at market price ${formatter.format(stock.currentPrice)}!'
+                              : '$_orderType Order placed @ ${formatter.format(target)}! View in Orders tab.',
+                        ),
+                        backgroundColor: AppColors.profit,
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
                 }
               } : null,
               style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(50),
-                backgroundColor: (!isMarketOnline || !stock.isLive) ? const Color(0xFF2B3139) : (isLong ? AppColors.profit : AppColors.loss),
+                backgroundColor: (!isMarketOnline || !stock.isLive || stock.currentPrice <= 0 || !isLimitPlausible)
+                    ? const Color(0xFF2B3139)
+                    : (isLong ? AppColors.profit : AppColors.loss),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
               child: Text(
-                (!isMarketOnline || !stock.isLive)
+                (!isMarketOnline || !stock.isLive || stock.currentPrice <= 0)
                     ? 'Syncing Live Price...'
-                    : (isLong ? 'Buy / Long' : 'Sell / Short'),
-                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: (!isMarketOnline || !stock.isLive) ? Colors.white38 : Colors.white),
+                    : (!isLimitPlausible
+                        ? 'Limit Price Out of Range'
+                        : (isLong ? 'Buy / Long' : 'Sell / Short')),
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 16,
+                  color: (!canExecute || !isMarketOnline || !stock.isLive || stock.currentPrice <= 0) ? AppColors.subtle : Colors.white,
+                ),
               ),
             ),
           ],
@@ -1434,7 +1563,7 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
                   ),
                   Text(
                     qtyStr,
-                    style: const TextStyle(color: Colors.white70, fontSize: 11),
+                    style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
                   ),
                 ],
               ),
@@ -1461,7 +1590,7 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
     }).toList();
 
     if (activePositions.isEmpty) {
-      return const Center(child: Text('No open positions.', style: TextStyle(color: Colors.white54)));
+      return Center(child: Text('No open positions.', style: TextStyle(color: AppColors.subtle)));
     }
     return ListView.builder(
       padding: const EdgeInsets.all(16),
@@ -1512,10 +1641,149 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
     );
   }
 
+  Widget _buildOrdersTab(UserState userState, List<Stock> market, AppCurrencyFormatter formatter) {
+    final pendingOrders = userState.futuresLimitOrders.where((o) => o.status == 'pending').toList();
+    if (pendingOrders.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.receipt_long_outlined, size: 40, color: AppColors.subtle),
+              const SizedBox(height: 10),
+              Text(
+                'No open futures orders',
+                style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 14),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Placed limit and stop-limit orders waiting for market trigger will appear here.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppColors.subtle, fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: pendingOrders.length,
+      itemBuilder: (context, index) {
+        final order = pendingOrders[index];
+        final isLong = order.side == OrderSide.buy;
+        final stock = market.firstWhere((s) => s.symbol == order.symbol, orElse: () => market.first);
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppColors.outline),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: (isLong ? AppColors.profit : AppColors.loss).withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          '${isLong ? 'Long' : 'Short'} ${order.leverage}x',
+                          style: TextStyle(
+                            color: isLong ? AppColors.profit : AppColors.loss,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${order.symbol}-PERP',
+                        style: TextStyle(
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceAlt,
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                        child: Text(
+                          order.orderType,
+                          style: const TextStyle(color: AppColors.subtle, fontSize: 10, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
+                  ),
+                  OutlinedButton(
+                    onPressed: () {
+                      final success = ref.read(userProvider.notifier).cancelFuturesLimitOrder(order.id);
+                      if (success) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: const Text('Order cancelled. Margin refunded.'),
+                            backgroundColor: AppColors.surfaceAlt,
+                          ),
+                        );
+                      }
+                    },
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      minimumSize: Size.zero,
+                      side: BorderSide(color: AppColors.loss.withValues(alpha: 0.5)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                    ),
+                    child: const Text('Cancel', style: TextStyle(color: AppColors.loss, fontSize: 11, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _buildOrderStat('Target Price', formatter.format(order.targetPrice)),
+                  _buildOrderStat('Market Price', formatter.format(stock.currentPrice)),
+                  _buildOrderStat('Qty', '${order.quantity.toStringAsFixed(4)} ${order.symbol}'),
+                  _buildOrderStat('Margin', formatter.format(order.reservedMargin)),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildOrderStat(String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(color: AppColors.subtle, fontSize: 10)),
+        const SizedBox(height: 2),
+        Text(value, style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 11)),
+      ],
+    );
+  }
+
   void _showContractInfoSheet(BuildContext context, Stock stock, AppCurrencyFormatter formatter) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1E2329),
+      backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -1532,10 +1800,10 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
                   const SizedBox(width: 10),
                   Text(
                     '${stock.symbol}-PERP Details',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                      color: AppColors.textPrimary,
                     ),
                   ),
                 ],
@@ -1563,7 +1831,7 @@ class _FuturesProScreenState extends ConsumerState<FuturesProScreen> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label, style: const TextStyle(color: Color(0xFF848E9C), fontSize: 14)),
-          Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14)),
+          Text(value, style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600, fontSize: 14)),
         ],
       ),
     );
@@ -1578,9 +1846,9 @@ class _PanelCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF181A20), // Premium dark mode panel color
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFF2B3139), width: 1),
+        border: Border.all(color: AppColors.outline, width: 1),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(8),

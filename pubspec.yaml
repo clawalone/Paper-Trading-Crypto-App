@@ -2,13 +2,15 @@ name: stock_arena
 description: A gamified paper-trading Flutter app with virtual stocks, charts, missions, badges, and leaderboards.
 publish_to: "none"
 
-version: 1.0.21+22
+version: 1.0.30+31
 
 environment:
   sdk: ">=3.4.0 <4.0.0"
 
 dependencies:
   flutter:
+    sdk: flutter
+  flutter_localizations:
     sdk: flutter
   flutter_riverpod: ^3.3.1
   fl_chart: ^1.2.0
@@ -32,6 +34,9 @@ dependencies:
   flutter_local_notifications: ^22.3.3
   firebase_messaging: ^16.7.1
   googleapis_auth: ^2.3.5
+  google_mobile_ads: ^9.2.0
+  local_auth: ^3.0.2
+  crypto: ^3.0.8
 
 dev_dependencies:
   flutter_test:
@@ -41,6 +46,10 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  generate: true
+  assets:
+    - assets/avatars/
+    - assets/icon.png
 
 flutter_icons:
   android: "ic_launcher"

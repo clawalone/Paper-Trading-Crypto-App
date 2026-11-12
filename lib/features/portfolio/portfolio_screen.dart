@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'dart:math';
@@ -7,11 +7,14 @@ import '../../core/app_theme.dart';
 import '../../core/currency_formatters.dart';
 import '../../core/coin_icon.dart';
 import '../../data/market_provider.dart';
+import '../../data/stock_market_provider.dart';
+import '../../data/market_mode_provider.dart';
 import '../../data/models.dart';
 import '../../data/user_provider.dart';
 import '../futures/futures_pro_screen.dart';
 import '../stock_detail/stock_detail_screen.dart';
 import '../home/home_shell.dart';
+import '../../core/widgets/arena_switcher.dart';
 
 class PortfolioScreen extends ConsumerStatefulWidget {
   const PortfolioScreen({super.key});
@@ -58,70 +61,103 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final mode = ref.watch(marketModeProvider);
+    final isStockMode = mode == MarketMode.stocks;
+    final stockMarket = ref.watch(stockMarketProvider);
+    final cryptoMarket = ref.watch(marketProvider);
+    final market = isStockMode ? stockMarket : cryptoMarket;
+
     final userState = ref.watch(userProvider);
-    final market = ref.watch(marketProvider);
     final formatter = AppCurrencyFormatter(userState.profile.preferredCurrency);
+
+    final cryptoMap = {for (final s in cryptoMarket) s.symbol: s};
+    final stockMap = {for (final s in stockMarket) s.symbol: s};
+    final stockSymbols = kStockAssets.map((a) => a.symbol).toSet();
+
+    bool isStockSymbol(String sym) {
+      final clean = sym.replaceAll(' PERP', '').replaceAll('.P', '').replaceAll('/USD', '').trim();
+      return sym.endsWith('.NS') ||
+          sym.endsWith('.BO') ||
+          sym.startsWith('^') ||
+          stockSymbols.contains(clean) ||
+          stockSymbols.contains(sym);
+    }
+
+    // Filter active holdings based on active mode
+    final displayedHoldings = isStockMode
+        ? userState.holdings.where((h) => isStockSymbol(h.symbol)).toList()
+        : userState.holdings.where((h) => !isStockSymbol(h.symbol)).toList();
+
+    // Filter trades based on active mode
+    final displayedTrades = isStockMode
+        ? userState.trades.where((t) => isStockSymbol(t.symbol)).toList()
+        : userState.trades.where((t) => !isStockSymbol(t.symbol)).toList();
 
     double spotPortfolioValue = 0;
     double spotInvestedValue = 0;
     final Map<String, double> assetValues = {};
 
     // 1. Calculate Spot Assets
-    for (final holding in userState.holdings) {
-      final stock = market.firstWhere(
-        (s) => s.symbol == holding.symbol,
-        orElse: () => Stock(
-          symbol: holding.symbol,
-          name: holding.symbol,
-          category: 'Crypto',
-          currentPrice: holding.averagePrice,
-          previousClose: holding.averagePrice,
-          dayHigh: holding.averagePrice,
-          dayLow: holding.averagePrice,
-          volume: 0,
-          history: [],
-          candleHistory: [],
-          about: '',
-          supply: 0.0,
-          rank: 0,
-        ),
+    for (final holding in displayedHoldings) {
+      final stock = stockMap[holding.symbol] ?? cryptoMap[holding.symbol] ?? Stock(
+        symbol: holding.symbol,
+        name: holding.symbol,
+        category: isStockMode ? 'Stocks' : 'Crypto',
+        currentPrice: holding.averagePrice,
+        previousClose: holding.averagePrice,
+        dayHigh: holding.averagePrice,
+        dayLow: holding.averagePrice,
+        volume: 0,
+        history: [],
+        candleHistory: [],
+        about: '',
+        supply: 0.0,
+        rank: 0,
       );
-      final value = stock.currentPrice * holding.quantity;
+      final inrRate = CurrencyFormatters.rates['INR'] ?? CurrencyFormatters.usdToInr;
+      final priceUsd = stock.currency == 'INR' ? (stock.currentPrice / inrRate) : stock.currentPrice;
+      final avgUsd = holding.averagePrice;
+      final value = priceUsd * holding.quantity;
       spotPortfolioValue += value;
-      spotInvestedValue += holding.averagePrice * holding.quantity;
+      spotInvestedValue += avgUsd * holding.quantity;
       assetValues[holding.symbol] = value;
     }
 
-    // 2. Calculate Futures Positions
-    final activeFutures = userState.futuresPositions.where((pos) {
-      final stockIdx = market.indexWhere((s) => s.symbol == pos.symbol);
-      if (stockIdx < 0) return true;
-      return !pos.isLiquidated(market[stockIdx].currentPrice);
+    // 2. Calculate Futures / Margin Positions
+    final allFutures = isStockMode
+        ? userState.futuresPositions.where((p) => isStockSymbol(p.symbol)).toList()
+        : userState.futuresPositions.where((p) => !isStockSymbol(p.symbol)).toList();
+
+    final activeFutures = allFutures.where((pos) {
+      final s = stockMap[pos.symbol] ?? cryptoMap[pos.symbol];
+      if (s == null) return true;
+      final inrRate = CurrencyFormatters.rates['INR'] ?? CurrencyFormatters.usdToInr;
+      final priceUsd = s.currency == 'INR' ? (s.currentPrice / inrRate) : s.currentPrice;
+      return !pos.isLiquidated(priceUsd);
     }).toList();
 
     double totalFuturesMargin = 0;
     double totalFuturesPnl = 0;
     for (final pos in activeFutures) {
-      final stock = market.firstWhere(
-        (s) => s.symbol == pos.symbol,
-        orElse: () => Stock(
-          symbol: pos.symbol,
-          name: pos.symbol,
-          category: 'Crypto',
-          currentPrice: pos.entryPrice,
-          previousClose: pos.entryPrice,
-          dayHigh: pos.entryPrice,
-          dayLow: pos.entryPrice,
-          volume: 0,
-          history: [],
-          candleHistory: [],
-          about: '',
-          supply: 0.0,
-          rank: 0,
-        ),
+      final stock = stockMap[pos.symbol] ?? cryptoMap[pos.symbol] ?? Stock(
+        symbol: pos.symbol,
+        name: pos.symbol,
+        category: isStockMode ? 'Stocks' : 'Crypto',
+        currentPrice: pos.entryPrice,
+        previousClose: pos.entryPrice,
+        dayHigh: pos.entryPrice,
+        dayLow: pos.entryPrice,
+        volume: 0,
+        history: [],
+        candleHistory: [],
+        about: '',
+        supply: 0.0,
+        rank: 0,
       );
+      final inrRate = CurrencyFormatters.rates['INR'] ?? CurrencyFormatters.usdToInr;
+      final priceUsd = stock.currency == 'INR' ? (stock.currentPrice / inrRate) : stock.currentPrice;
       final isLong = pos.side == OrderSide.buy;
-      final priceDiff = stock.currentPrice - pos.entryPrice;
+      final priceDiff = priceUsd - pos.entryPrice;
       final posPnl = isLong ? priceDiff * pos.quantity : -priceDiff * pos.quantity;
 
       totalFuturesMargin += pos.margin;
@@ -129,7 +165,7 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
 
       final currentValue = pos.margin + posPnl;
       final safeValue = currentValue > 0 ? currentValue : 0.0;
-      final assetKey = '${pos.symbol} (Futures)';
+      final assetKey = isStockMode ? '${pos.symbol} (Margin)' : '${pos.symbol} (Futures)';
       assetValues[assetKey] = (assetValues[assetKey] ?? 0) + safeValue;
     }
 
@@ -152,29 +188,12 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
         elevation: 0,
         title: Row(
           children: [
-            const Text(
-              'Portfolio',
-              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 24, letterSpacing: -0.5),
+            Text(
+              'Portfolio'.tr(),
+              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 24, letterSpacing: -0.5),
             ),
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircleAvatar(radius: 3, backgroundColor: AppColors.primary),
-                  SizedBox(width: 5),
-                  Text(
-                    'PRO',
-                    style: TextStyle(color: AppColors.primary, fontSize: 10, fontWeight: FontWeight.w900),
-                  ),
-                ],
-              ),
-            ),
+            const SizedBox(width: 10),
+            const ArenaSwitcher(compact: true),
           ],
         ),
         actions: [
@@ -212,10 +231,13 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
 
                 // ── Segmented Navigation Tabs ────────────────────────────────
                 _buildSegmentedTabs(
-                  holdingsCount: userState.holdings.length,
+                  isStockMode: isStockMode,
+                  holdingsCount: displayedHoldings.length,
                   futuresCount: activeFutures.length,
-                  ordersCount: pendingOrdersCount,
-                  tradesCount: userState.trades.length,
+                  ordersCount: isStockMode
+                      ? userState.amoOrders.where((o) => o.status == 'queued').length
+                      : pendingOrdersCount,
+                  tradesCount: displayedTrades.length,
                 ),
 
                 const SizedBox(height: 20),
@@ -228,27 +250,37 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
                     userState: userState,
                     market: market,
                     formatter: formatter,
+                    isStockMode: isStockMode,
+                    displayedHoldings: displayedHoldings,
+                    activeFutures: activeFutures,
                   )
                 else if (_selectedTab == 1)
                   _buildHoldingsTab(
-                    holdings: userState.holdings,
+                    holdings: displayedHoldings,
                     market: market,
                     formatter: formatter,
+                    isStockMode: isStockMode,
                   )
                 else if (_selectedTab == 2)
                   _buildFuturesTab(
                     positions: activeFutures,
                     market: market,
                     formatter: formatter,
+                    isStockMode: isStockMode,
                   )
                 else if (_selectedTab == 3)
-                  _buildOrdersTab(
-                    orders: userState.spotLimitOrders.where((o) => o.status == 'pending').toList(),
-                    formatter: formatter,
-                  )
+                  isStockMode
+                      ? _buildAmoOrdersTab(
+                          orders: userState.amoOrders,
+                          formatter: formatter,
+                        )
+                      : _buildOrdersTab(
+                          orders: userState.spotLimitOrders.where((o) => o.status == 'pending').toList(),
+                          formatter: formatter,
+                        )
                 else
                   _buildHistoryTab(
-                    trades: userState.trades,
+                    trades: displayedTrades,
                     formatter: formatter,
                   ),
 
@@ -281,19 +313,22 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
     return Container(
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF22262B),
-            Color(0xFF181B1E),
-          ],
-        ),
+        color: AppColors.isDarkMode ? null : AppColors.surface,
+        gradient: AppColors.isDarkMode
+            ? const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFF22262B),
+                  Color(0xFF181B1E),
+                ],
+              )
+            : null,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFF2C3138), width: 1.2),
+        border: Border.all(color: AppColors.outline, width: 1.2),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.45),
+            color: Colors.black.withValues(alpha: AppColors.isDarkMode ? 0.45 : 0.05),
             blurRadius: 20,
             offset: const Offset(0, 10),
           ),
@@ -323,9 +358,9 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF262B32),
+                  color: AppColors.surfaceAlt,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFF373E47)),
+                  border: Border.all(color: AppColors.outline),
                 ),
                 child: const Row(
                   mainAxisSize: MainAxisSize.min,
@@ -349,8 +384,8 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
           const SizedBox(height: 10),
           Text(
             _hideBalance ? '••••••••' : formatter.format(totalNetWorth),
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: AppColors.textPrimary,
               fontSize: 34,
               fontWeight: FontWeight.w900,
               letterSpacing: -0.6,
@@ -386,14 +421,14 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
                 ),
               ),
               const SizedBox(width: 10),
-              const Text(
-                'Today\'s P&L',
-                style: TextStyle(color: Color(0xFF64748B), fontSize: 12, fontWeight: FontWeight.w600),
+              Text(
+                'Today\'s P&L'.tr(),
+                style: const TextStyle(color: Color(0xFF64748B), fontSize: 12, fontWeight: FontWeight.w600),
               ),
             ],
           ),
           const SizedBox(height: 20),
-          const Divider(height: 1, color: Color(0xFF2C3138)),
+          Divider(height: 1, color: AppColors.outline),
           const SizedBox(height: 16),
 
           // 4-Stat Sub-Matrix
@@ -401,17 +436,17 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
             children: [
               Expanded(
                 child: _buildMetricTile(
-                  label: 'Free Cash',
+                  label: 'Free Cash'.tr(),
                   value: _hideBalance ? '••••' : formatter.format(cash),
                   accentColor: const Color(0xFF00D09C),
                 ),
               ),
-              Container(width: 1, height: 36, color: const Color(0xFF2C3138)),
+              Container(width: 1, height: 36, color: AppColors.outline),
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.only(left: 14),
                   child: _buildMetricTile(
-                    label: 'Spot Assets',
+                    label: 'Spot Assets'.tr(),
                     value: _hideBalance ? '••••' : formatter.format(spotValue),
                     accentColor: const Color(0xFF38BDF8),
                   ),
@@ -424,17 +459,17 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
             children: [
               Expanded(
                 child: _buildMetricTile(
-                  label: 'Futures Margin',
+                  label: 'Futures Margin'.tr(),
                   value: _hideBalance ? '••••' : formatter.format(futuresMargin),
                   accentColor: const Color(0xFFF3BA2F),
                 ),
               ),
-              Container(width: 1, height: 36, color: const Color(0xFF2C3138)),
+              Container(width: 1, height: 36, color: AppColors.outline),
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.only(left: 14),
                   child: _buildMetricTile(
-                    label: 'Futures P&L',
+                    label: 'Futures P&L'.tr(),
                     value: _hideBalance ? '••••' : '${futuresPnl >= 0 ? '+' : ''}${formatter.format(futuresPnl)}',
                     accentColor: futuresPnl >= 0 ? AppColors.profit : AppColors.loss,
                   ),
@@ -455,11 +490,11 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
           children: [
             Container(width: 6, height: 6, decoration: BoxDecoration(shape: BoxShape.circle, color: accentColor)),
             const SizedBox(width: 6),
-            Text(label, style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.w700)),
+            Text(label.tr(), style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.w700)),
           ],
         ),
         const SizedBox(height: 4),
-        Text(value, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800)),
+        Text(value, style: TextStyle(color: AppColors.textPrimary, fontSize: 15, fontWeight: FontWeight.w800)),
       ],
     );
   }
@@ -468,6 +503,7 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
   // 2. SEGMENTED TABS
   // ════════════════════════════════════════════════════════════════════════════
   Widget _buildSegmentedTabs({
+    bool isStockMode = false,
     required int holdingsCount,
     required int futuresCount,
     required int ordersCount,
@@ -475,9 +511,9 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
   }) {
     final tabs = [
       {'title': 'Overview', 'count': null},
-      {'title': 'Spot', 'count': holdingsCount},
-      {'title': 'Futures', 'count': futuresCount},
-      {'title': 'Orders', 'count': ordersCount},
+      {'title': isStockMode ? 'Holdings' : 'Spot', 'count': holdingsCount},
+      {'title': isStockMode ? 'Positions' : 'Futures', 'count': futuresCount},
+      {'title': isStockMode ? 'Queued AMOs' : 'Orders', 'count': ordersCount},
       {'title': 'History', 'count': tradesCount},
     ];
 
@@ -499,10 +535,12 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
                 duration: const Duration(milliseconds: 200),
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 decoration: BoxDecoration(
-                  color: isSelected ? const Color(0xFF262B32) : const Color(0xFF16191D),
+                  color: isSelected
+                      ? (AppColors.isDarkMode ? const Color(0xFF262B32) : AppColors.surface)
+                      : (AppColors.isDarkMode ? const Color(0xFF16191D) : AppColors.surfaceAlt),
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(
-                    color: isSelected ? AppColors.primary : const Color(0xFF262B32),
+                    color: isSelected ? AppColors.primary : AppColors.outline,
                     width: 1.2,
                   ),
                 ),
@@ -510,9 +548,9 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      item['title'] as String,
+                      (item['title'] as String).tr(),
                       style: TextStyle(
-                        color: isSelected ? Colors.white : const Color(0xFF94A3B8),
+                        color: isSelected ? AppColors.textPrimary : AppColors.subtle,
                         fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
                         fontSize: 13,
                       ),
@@ -522,13 +560,17 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: isSelected ? AppColors.primary : const Color(0xFF38404B),
+                          color: isSelected
+                              ? AppColors.primary
+                              : (AppColors.isDarkMode ? const Color(0xFF38404B) : AppColors.outline),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Text(
                           '$count',
                           style: TextStyle(
-                            color: isSelected ? Colors.black : Colors.white,
+                            color: isSelected
+                                ? Colors.black
+                                : (AppColors.isDarkMode ? Colors.white : AppColors.textPrimary),
                             fontSize: 10,
                             fontWeight: FontWeight.w900,
                           ),
@@ -554,6 +596,9 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
     required UserState userState,
     required List<Stock> market,
     required AppCurrencyFormatter formatter,
+    bool isStockMode = false,
+    required List<Holding> displayedHoldings,
+    required List<FuturesPosition> activeFutures,
   }) {
     final pieSections = List.generate(sortedAssets.length, (i) {
       final isTouched = i == _touchedSectionIndex;
@@ -581,23 +626,32 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
         Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: const Color(0xFF181B1E),
+            color: AppColors.surface,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: const Color(0xFF262B32)),
+            border: Border.all(color: AppColors.outline),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Row(
+              Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'Asset Allocation',
-                    style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800),
+                  Expanded(
+                    child: Text(
+                      'Asset Allocation'.tr(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w800),
+                    ),
                   ),
-                  Text(
-                    'Tap slice to inspect',
-                    style: TextStyle(color: Color(0xFF64748B), fontSize: 11, fontWeight: FontWeight.w600),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      'Tap slice to inspect'.tr(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Color(0xFF64748B), fontSize: 10.5, fontWeight: FontWeight.w600),
+                    ),
                   ),
                 ],
               ),
@@ -634,7 +688,7 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
                       children: [
                         if (activeAsset != null) ...[
                           if (activeAsset.key != 'CASH') ...[
-                            CoinIcon(symbol: activeAsset.key.replaceAll(' (Futures)', ''), size: 22),
+                            CoinIcon(symbol: activeAsset.key.replaceAll(' (Futures)', '').replaceAll(' (Margin)', ''), size: 22),
                             const SizedBox(height: 3),
                           ],
                           Text(
@@ -647,7 +701,7 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
                             totalNetWorth == 0
                                 ? '0%'
                                 : '${((activeAsset.value / totalNetWorth) * 100).toStringAsFixed(1)}%',
-                            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900),
+                            style: TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.w900),
                           ),
                           Text(
                             _hideBalance ? '••••' : formatter.format(activeAsset.value),
@@ -661,7 +715,7 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
                           const SizedBox(height: 2),
                           Text(
                             '${sortedAssets.length}',
-                            style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900),
+                            style: TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.w900),
                           ),
                           const Text(
                             'Assets',
@@ -713,13 +767,13 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
                             child: Icon(Icons.account_balance_wallet_rounded, size: 12, color: color),
                           )
                         else
-                          CoinIcon(symbol: asset.key.replaceAll(' (Futures)', ''), size: 20),
+                          CoinIcon(symbol: asset.key.replaceAll(' (Futures)', '').replaceAll(' (Margin)', ''), size: 20),
                         const SizedBox(width: 8),
                         Expanded(
                           flex: 3,
                           child: Text(
                             asset.key,
-                            style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+                            style: TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w700),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -729,7 +783,7 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
                             borderRadius: BorderRadius.circular(4),
                             child: LinearProgressIndicator(
                               value: (percent / 100).clamp(0.0, 1.0),
-                              backgroundColor: const Color(0xFF1E293B),
+                              backgroundColor: AppColors.surfaceAlt,
                               valueColor: AlwaysStoppedAnimation<Color>(color),
                               minHeight: 6,
                             ),
@@ -741,13 +795,13 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
                           child: Text(
                             '${percent.toStringAsFixed(1)}%',
                             textAlign: TextAlign.right,
-                            style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 12, fontWeight: FontWeight.w700),
+                            style: TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w700),
                           ),
                         ),
                         const SizedBox(width: 8),
                         Text(
                           _hideBalance ? '••••' : formatter.format(asset.value),
-                          style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800),
+                          style: TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w800),
                         ),
                       ],
                     ),
@@ -760,13 +814,13 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
 
         const SizedBox(height: 24),
 
-        // ── Quick Spot Holdings Preview ──────────────────────────────────────
+        // ── Quick Spot / Stock Holdings Preview ──────────────────────────────
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
-              'Active Spot Holdings',
-              style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800),
+            Text(
+              isStockMode ? 'Stock Holdings' : 'Active Spot Holdings',
+              style: TextStyle(color: AppColors.textPrimary, fontSize: 17, fontWeight: FontWeight.w800),
             ),
             TextButton(
               onPressed: () => setState(() => _selectedTab = 1),
@@ -775,25 +829,25 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
           ],
         ),
         const SizedBox(height: 8),
-        if (userState.holdings.isEmpty)
+        if (displayedHoldings.isEmpty)
           _buildEmptyState(
             icon: Icons.account_balance_wallet_outlined,
-            message: 'No Spot tokens yet.',
-            actionLabel: 'Explore Spot Markets',
+            message: isStockMode ? 'No stock holdings yet.' : 'No Spot tokens yet.',
+            actionLabel: isStockMode ? 'Explore Stocks' : 'Explore Spot Markets',
             onAction: () => ref.read(homeTabProvider.notifier).state = 1,
           )
         else
-          ...userState.holdings.take(3).map((h) => _buildSpotCard(h, market, formatter)),
+          ...displayedHoldings.take(3).map((h) => _buildSpotCard(h, market, formatter)),
 
         const SizedBox(height: 20),
 
-        // ── Quick Futures Positions Preview ──────────────────────────────────
+        // ── Quick Futures / Margin Positions Preview ──────────────────────────
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
-              'Open Futures Positions',
-              style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800),
+            Text(
+              isStockMode ? 'Open Margin Positions' : 'Open Futures Positions',
+              style: TextStyle(color: AppColors.textPrimary, fontSize: 17, fontWeight: FontWeight.w800),
             ),
             TextButton(
               onPressed: () => setState(() => _selectedTab = 2),
@@ -802,25 +856,17 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
           ],
         ),
         const SizedBox(height: 8),
-        Builder(builder: (context) {
-          final activeFutures = userState.futuresPositions.where((pos) {
-            final stockIdx = market.indexWhere((s) => s.symbol == pos.symbol);
-            if (stockIdx < 0) return true;
-            return !pos.isLiquidated(market[stockIdx].currentPrice);
-          }).toList();
-
-          if (activeFutures.isEmpty) {
-            return _buildEmptyState(
-              icon: Icons.bolt_outlined,
-              message: 'No open futures contracts.',
-              actionLabel: 'Trade 100x Futures',
-              onAction: () => ref.read(homeTabProvider.notifier).state = 2,
-            );
-          }
-          return Column(
+        if (activeFutures.isEmpty)
+          _buildEmptyState(
+            icon: Icons.bolt_outlined,
+            message: isStockMode ? 'No open margin positions.' : 'No open futures contracts.',
+            actionLabel: isStockMode ? 'Trade 5x Margin' : 'Trade 100x Futures',
+            onAction: () => ref.read(homeTabProvider.notifier).state = isStockMode ? 1 : 2,
+          )
+        else
+          Column(
             children: activeFutures.take(3).map((pos) => _buildFuturesCard(pos, market, formatter)).toList(),
-          );
-        }),
+          ),
       ],
     );
   }
@@ -832,12 +878,13 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
     required List<Holding> holdings,
     required List<Stock> market,
     required AppCurrencyFormatter formatter,
+    bool isStockMode = false,
   }) {
     if (holdings.isEmpty) {
       return _buildEmptyState(
         icon: Icons.account_balance_wallet_outlined,
-        message: 'No crypto holdings found.',
-        actionLabel: 'Buy Spot Crypto',
+        message: isStockMode ? 'No stock holdings found.' : 'No crypto holdings found.',
+        actionLabel: isStockMode ? 'Explore Stocks' : 'Buy Spot Crypto',
         onAction: () => ref.read(homeTabProvider.notifier).state = 1,
       );
     }
@@ -852,9 +899,9 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
               '${holdings.length} Assets Held',
               style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13, fontWeight: FontWeight.w700),
             ),
-            const Text(
-              'Holdings / P&L',
-              style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12, fontWeight: FontWeight.w600),
+            Text(
+              'Holdings / P&L'.tr(),
+              style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12, fontWeight: FontWeight.w600),
             ),
           ],
         ),
@@ -900,9 +947,9 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: const Color(0xFF181B1E),
+          color: AppColors.surface,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFF262B32), width: 1.0),
+          border: Border.all(color: AppColors.outline, width: 1.0),
         ),
         child: Row(
           children: [
@@ -914,45 +961,76 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    stock.symbol,
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          stock.symbol,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800, fontSize: 15),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF262B32),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: const Color(0xFF3B414B), width: 0.8),
+                        ),
+                        child: const Text(
+                          'DELIVERY',
+                          style: TextStyle(color: Color(0xFF94A3B8), fontSize: 9.0, fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 3),
                   Text(
                     '${h.quantity} ${stock.symbol} • Avg ${formatter.format(h.averagePrice)}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(color: Color(0xFF848E9C), fontSize: 12),
                   ),
                 ],
               ),
             ),
+            const SizedBox(width: 10),
             // Value & Return
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  _hideBalance ? '••••' : formatter.format(currentVal),
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16),
-                ),
-                const SizedBox(height: 3),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: (isProfitable ? AppColors.profit : AppColors.loss).withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(6),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 140),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    _hideBalance ? '••••' : formatter.format(currentVal),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800, fontSize: 16),
                   ),
-                  child: Text(
-                    _hideBalance
-                        ? '••••'
-                        : '${isProfitable ? '+' : ''}${formatter.format(returnVal)} (${returnPercent.toStringAsFixed(1)}%)',
-                    style: TextStyle(
-                      color: isProfitable ? AppColors.profit : AppColors.loss,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 11,
+                  const SizedBox(height: 3),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: (isProfitable ? AppColors.profit : AppColors.loss).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      _hideBalance
+                          ? '••••'
+                          : '${isProfitable ? '+' : ''}${formatter.format(returnVal)} (${returnPercent.toStringAsFixed(1)}%)',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: isProfitable ? AppColors.profit : AppColors.loss,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 11,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
         ),
@@ -961,18 +1039,19 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
   }
 
   // ════════════════════════════════════════════════════════════════════════════
-  // 5. FUTURES TAB
+  // 5. FUTURES / MARGIN TAB
   // ════════════════════════════════════════════════════════════════════════════
   Widget _buildFuturesTab({
     required List<FuturesPosition> positions,
     required List<Stock> market,
     required AppCurrencyFormatter formatter,
+    bool isStockMode = false,
   }) {
     if (positions.isEmpty) {
       return _buildEmptyState(
         icon: Icons.bolt_outlined,
-        message: 'No open futures positions.',
-        actionLabel: 'Launch Futures Pro',
+        message: isStockMode ? 'No open margin positions.' : 'No open futures positions.',
+        actionLabel: isStockMode ? 'Trade 5x Margin' : 'Launch Futures Pro',
         onAction: () => ref.read(homeTabProvider.notifier).state = 2,
       );
     }
@@ -984,12 +1063,12 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              '${positions.length} Active Contracts',
+              isStockMode ? '${positions.length} Active Margin Positions' : '${positions.length} Active Contracts',
               style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13, fontWeight: FontWeight.w700),
             ),
-            const Text(
-              'Unrealized P&L / ROE%',
-              style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12, fontWeight: FontWeight.w600),
+            Text(
+              'Unrealized P&L / ROE%'.tr(),
+              style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12, fontWeight: FontWeight.w600),
             ),
           ],
         ),
@@ -1029,9 +1108,9 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF181B1E),
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF262B32), width: 1.0),
+        border: Border.all(color: AppColors.outline, width: 1.0),
       ),
       child: Column(
         children: [
@@ -1039,9 +1118,15 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
             children: [
               CoinIcon(symbol: pos.symbol, size: 28),
               const SizedBox(width: 8),
-              Text(
-                '${pos.symbol}-PERP',
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16),
+              Expanded(
+                child: Text(
+                  pos.symbol.endsWith('.NS') || pos.symbol.endsWith('.BO') || pos.symbol.contains('/') || !pos.symbol.endsWith('USDT')
+                      ? pos.symbol
+                      : '${pos.symbol}-PERP',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w900, fontSize: 16),
+                ),
               ),
               const SizedBox(width: 8),
               Container(
@@ -1110,7 +1195,7 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
             ],
           ),
           const SizedBox(height: 14),
-          const Divider(height: 1, color: Color(0xFF262B32)),
+          Divider(height: 1, color: AppColors.outline),
           const SizedBox(height: 10),
           Row(
             children: [
@@ -1120,28 +1205,39 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
                     ref.read(userProvider.notifier).closeFuturesPosition(pos, stock.currentPrice);
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        backgroundColor: const Color(0xFF1E2329),
-                        content: Text('Position for ${pos.symbol} closed at market price.'),
+                        backgroundColor: AppColors.surface,
+                        content: Text('Position for ${pos.symbol} closed at market price.', style: TextStyle(color: AppColors.textPrimary)),
                       ),
                     );
                   },
                   style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Color(0xFF334155)),
+                    side: BorderSide(color: AppColors.outline),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     padding: const EdgeInsets.symmetric(vertical: 8),
                   ),
-                  child: const Text('Close Position', style: TextStyle(color: Color(0xFFCBD5E1), fontSize: 12, fontWeight: FontWeight.w700)),
+                  child: Text('Close Position', style: TextStyle(color: AppColors.textPrimary, fontSize: 12, fontWeight: FontWeight.w700)),
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: FilledButton(
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => FuturesProScreen(stockSymbol: pos.symbol)),
-                  ),
+                  onPressed: () {
+                    final isStock = pos.symbol.endsWith('.NS') ||
+                        pos.symbol.endsWith('.BO') ||
+                        kStockAssets.any((a) => a.symbol == pos.symbol);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => isStock
+                            ? StockDetailScreen(stockSymbol: pos.symbol)
+                            : FuturesProScreen(stockSymbol: pos.symbol),
+                      ),
+                    );
+                  },
                   style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF1E293B),
+                    backgroundColor: AppColors.isDarkMode
+                        ? const Color(0xFF1E293B)
+                        : AppColors.primary.withValues(alpha: 0.14),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     padding: const EdgeInsets.symmetric(vertical: 8),
                   ),
@@ -1167,7 +1263,7 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
       children: [
         Text(
           label,
-          style: const TextStyle(color: Color(0xFF64748B), fontSize: 11, fontWeight: FontWeight.w600),
+          style: TextStyle(color: AppColors.subtle, fontSize: 11, fontWeight: FontWeight.w600),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
@@ -1178,12 +1274,132 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
           child: Text(
             value,
             style: TextStyle(
-              color: valueColor ?? Colors.white,
+              color: valueColor ?? AppColors.textPrimary,
               fontSize: 13,
               fontWeight: FontWeight.w800,
             ),
           ),
         ),
+      ],
+    );
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // 5b. QUEUED AFTER-MARKET ORDERS TAB (AMO)
+  // ════════════════════════════════════════════════════════════════════════════
+  Widget _buildAmoOrdersTab({
+    required List<AmoOrder> orders,
+    required AppCurrencyFormatter formatter,
+  }) {
+    final queued = orders.where((o) => o.status == 'queued').toList();
+    if (queued.isEmpty) {
+      return _buildEmptyState(
+        icon: Icons.nightlight_outlined,
+        message: 'No queued After-Market Orders (AMOs).',
+        actionLabel: 'Browse Stocks',
+        onAction: () => ref.read(homeTabProvider.notifier).state = 1,
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '${queued.length} Queued After-Market Orders',
+          style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13, fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 12),
+        ...queued.map((order) {
+          final isBuy = order.side == OrderSide.buy;
+          return Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.outline),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceAlt,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Text('🌙', style: TextStyle(fontSize: 16)),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: (isBuy ? AppColors.profit : AppColors.loss).withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              isBuy ? 'AMO BUY' : 'AMO SELL',
+                              style: TextStyle(
+                                color: isBuy ? AppColors.profit : AppColors.loss,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            order.symbol,
+                            style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800, fontSize: 15),
+                          ),
+                          if (order.leverage > 1) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF3BA2F).withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                '${order.leverage}x Margin',
+                                style: const TextStyle(color: Color(0xFFF3BA2F), fontSize: 9.5, fontWeight: FontWeight.w800),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        'Qty: ${order.quantity} shares • Reserved: \$${order.reservedAmount.toStringAsFixed(2)}',
+                        style: const TextStyle(color: Color(0xFF848E9C), fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                TextButton(
+                  onPressed: () {
+                    final success = ref.read(userProvider.notifier).cancelAmoOrder(order.id);
+                    if (success) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('After-Market Order cancelled & funds refunded.'),
+                          backgroundColor: Color(0xFFF3BA2F),
+                        ),
+                      );
+                    }
+                  },
+                  child: const Text('Cancel', style: TextStyle(color: AppColors.loss, fontSize: 12, fontWeight: FontWeight.w800)),
+                ),
+              ],
+            ),
+          );
+        }),
       ],
     );
   }
@@ -1218,9 +1434,9 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
             margin: const EdgeInsets.only(bottom: 10),
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: const Color(0xFF181B1E),
+              color: AppColors.surface,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFF262B32)),
+              border: Border.all(color: AppColors.outline),
             ),
             child: Row(
               children: [
@@ -1248,7 +1464,7 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
                             ),
                           ),
                           const SizedBox(width: 8),
-                          Text(order.symbol, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
+                          Text(order.symbol, style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800, fontSize: 15)),
                         ],
                       ),
                       const SizedBox(height: 3),
@@ -1311,9 +1527,9 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
             margin: const EdgeInsets.only(bottom: 8),
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: const Color(0xFF181B1E),
+              color: AppColors.surface,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFF262B32)),
+              border: Border.all(color: AppColors.outline),
             ),
             child: Row(
               children: [
@@ -1343,7 +1559,7 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
                           const SizedBox(width: 6),
                           Text(
                             t.symbol,
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14),
+                            style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800, fontSize: 14),
                           ),
                         ],
                       ),
@@ -1360,7 +1576,7 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
                   children: [
                     Text(
                       formatter.format(t.price),
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14),
+                      style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800, fontSize: 14),
                     ),
                     const SizedBox(height: 2),
                     Text('${t.quantity} qty', style: const TextStyle(color: Color(0xFF848E9C), fontSize: 11)),
@@ -1386,9 +1602,9 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 32),
       decoration: BoxDecoration(
-        color: const Color(0xFF181B1E),
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF262B32)),
+        border: Border.all(color: AppColors.outline),
       ),
       child: Center(
         child: Column(

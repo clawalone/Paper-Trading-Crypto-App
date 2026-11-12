@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -35,8 +35,8 @@ class _AdminPanelScreenState extends ConsumerState<AdminPanelScreen>
   bool _isLoading = false;
 
   // App Version Controllers
-  final _versionController = TextEditingController(text: '1.0.21');
-  final _buildNumController = TextEditingController(text: '22');
+  final _versionController = TextEditingController(text: '1.0.24');
+  final _buildNumController = TextEditingController(text: '25');
   final _updateMsgController = TextEditingController(
     text:
         'A new version of Acadrio Trade is available on Google Play Store. Update now for new features and performance improvements!',
@@ -59,6 +59,51 @@ class _AdminPanelScreenState extends ConsumerState<AdminPanelScreen>
       TextEditingController(text: 'CLAIM OFFER NOW 🚀');
   bool _isOfferActive = false;
   bool _isRepeatActive = false;
+
+  static const List<Map<String, String>> _quickOfferPresets = [
+    {
+      'label': '🔥 50% Flash Deal',
+      'title': '🔥 50% EXTRA BONUS CAPITAL OFFER!',
+      'badge': 'FLASH DEAL 🔥 50%',
+      'button': 'LOAD MY BAGS 💰',
+      'message': 'Limited time flash deal! Top up your virtual account today and receive up to 50% extra bonus capital for paper trading.',
+    },
+    {
+      'label': '🚀 BTC Pumping',
+      'title': '🚀 BITCOIN IS PUMPING: DON\'T RUN OUT OF MARGIN!',
+      'badge': 'BULL RUN ALERT 📈',
+      'button': 'CLAIM BONUS CASH 🚀',
+      'message': 'Market volatility is going crazy right now! Don\'t let your positions get liquidated. Top up your virtual war chest today and get up to 50% extra bonus trading power instantly.',
+    },
+    {
+      'label': '🛡️ Liquidation Shield',
+      'title': '🛡️ LIQUIDATION SHIELD: BOOST YOUR WAR CHEST',
+      'badge': 'RISK SHIELD 🛡️',
+      'button': 'BOOST MARGIN NOW ⚡',
+      'message': 'High volatility detected across BTC and major altcoins! Strengthen your margin buffer to survive unexpected market dips and ride the next rally.',
+    },
+    {
+      'label': '⚡ Weekend 2X',
+      'title': '⚡ WEEKEND TRADING CAPITAL MULTIPLIER!',
+      'badge': 'WEEKEND SPECIAL ⚡',
+      'button': 'DOUBLE MY BALANCE 🎁',
+      'message': 'Crypto never sleeps! Top up your paper trading funds this weekend to unlock exclusive bonus balance and test high-leverage 20x strategies risk-free.',
+    },
+    {
+      'label': '🐋 Whale Tier',
+      'title': '🐋 TRADE LIKE A WHALE: VIP LIQUIDITY PACK',
+      'badge': 'WHALE TIER 🐋',
+      'button': 'UNLOCK WHALE BAGS 💎',
+      'message': 'Move markets like an institutional whale! Top up your virtual account to trade the deepest order books with maximum position sizing and zero fear.',
+    },
+    {
+      'label': '🏆 Prize Sprint',
+      'title': '🏆 LEADERBOARD SPRINT: TOP 10 PRIZE BOOST',
+      'badge': 'PRIZE RACE 🏆',
+      'button': 'GET SPRINT FUNDS 🥇',
+      'message': 'The weekly leaderboard race is heating up! Secure extra virtual margin now to execute calculated high-ROE trades and climb into the Top 10 prize zone before Sunday midnight.',
+    },
+  ];
 
   // Account Ban Management Controllers & State
   final _banUidController = TextEditingController();
@@ -167,11 +212,11 @@ class _AdminPanelScreenState extends ConsumerState<AdminPanelScreen>
   static const Map<String, Map<String, String>> _categoryDefaults = {
     'announcement': {
       'title': '📢 Platform Announcement',
-      'message': 'Welcome to the new trading season! Compete in the Weekly Championship for cash prizes.',
+      'message': 'Welcome to the new trading season! Compete in the Weekly Championship for virtual cash prizes.',
     },
     'weekly_prize': {
       'title': '🏆 Weekly Championship Payout',
-      'message': 'Weekly Leaderboard settled! Top 3 traders have received their real cash prizes directly to their wallet.',
+      'message': 'Weekly Leaderboard settled! Top 3 traders have received their virtual capital prizes directly to their paper trading wallet.',
     },
     'reward': {
       'title': '🎁 Daily Trading Bonus Credited',
@@ -187,7 +232,7 @@ class _AdminPanelScreenState extends ConsumerState<AdminPanelScreen>
       TextEditingController(text: '📢 Platform Announcement');
   final _notifMsgController = TextEditingController(
     text:
-        'Welcome to the new trading season! Compete in the Weekly Championship for cash prizes.',
+        'Welcome to the new trading season! Compete in the Weekly Championship for virtual cash prizes.',
   );
   final _notifTargetUidController = TextEditingController();
   String _notifTargetMode = 'all';
@@ -2920,6 +2965,88 @@ class _AdminPanelScreenState extends ConsumerState<AdminPanelScreen>
               const Text(
                 'Display a flash deal modal banner on every trader\'s dashboard.',
                 style: TextStyle(color: Color(0xFF71767B), fontSize: 12),
+              ),
+              const SizedBox(height: 12),
+
+              const Row(
+                children: [
+                  Icon(Icons.bolt_rounded, color: Color(0xFFFF9800), size: 14),
+                  SizedBox(width: 4),
+                  Text(
+                    'QUICK OFFER PRESETS',
+                    style: TextStyle(
+                      color: Color(0xFF71767B),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 36,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: _quickOfferPresets.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (context, index) {
+                    final preset = _quickOfferPresets[index];
+                    final isSelected =
+                        _offerTitleController.text == preset['title'];
+                    const color = Color(0xFFFF5722);
+
+                    return GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _offerTitleController.text = preset['title']!;
+                          _offerBadgeController.text = preset['badge']!;
+                          _offerBtnController.text = preset['button']!;
+                          _offerMsgController.text = preset['message']!;
+                        });
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 11, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? color.withValues(alpha: 0.22)
+                              : const Color(0xFF202327),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: isSelected
+                                ? color
+                                : const Color(0xFF2F3336),
+                            width: isSelected ? 1.5 : 1,
+                          ),
+                          boxShadow: isSelected
+                              ? [
+                                  BoxShadow(
+                                    color: color.withValues(alpha: 0.25),
+                                    blurRadius: 6,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ]
+                              : null,
+                        ),
+                        child: Center(
+                          child: Text(
+                            preset['label']!,
+                            style: TextStyle(
+                              color: isSelected ? Colors.white : const Color(0xFFE7E9EA),
+                              fontWeight: isSelected
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
               ),
               const SizedBox(height: 14),
 

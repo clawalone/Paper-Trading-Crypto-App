@@ -1,9 +1,10 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../core/app_theme.dart';
+import '../../core/avatar_helper.dart';
 import '../../core/currency_formatters.dart';
 import '../../core/championship_prize_manager.dart';
 import '../../data/user_provider.dart';
@@ -24,9 +25,34 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
     super.initState();
     // Cache stream once in initState to avoid re-subscribing and flickering on parent rebuilds
     _tournamentStream = FirebaseFirestore.instance.collection('weekly_championship').snapshots();
+
+    // Clean up admin from weekly_championship collection
+    final user = ref.read(userProvider);
+    final emailLower = user.profile.email.toLowerCase();
+    final nameLower = user.profile.name.toLowerCase();
+    if (emailLower == 'admin@gmail.com' || nameLower.contains('admin')) {
+      final adminDocKey = emailLower.isNotEmpty ? emailLower.replaceAll('.', '_') : 'user_admin';
+      FirebaseFirestore.instance.collection('weekly_championship').doc(adminDocKey).delete().catchError((_) {});
+      FirebaseFirestore.instance.collection('weekly_championship').doc('admin').delete().catchError((_) {});
+      FirebaseFirestore.instance.collection('weekly_championship').doc('user_admin').delete().catchError((_) {});
+      FirebaseFirestore.instance.collection('weekly_championship').doc('admin@gmail_com').delete().catchError((_) {});
+    }
   }
 
   Future<void> _handleJoinTournament() async {
+    final user = ref.read(userProvider);
+    final emailLower = user.profile.email.toLowerCase();
+    final nameLower = user.profile.name.toLowerCase();
+    if (emailLower == 'admin@gmail.com' || nameLower.contains('admin')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Admin accounts are excluded from the Championship leaderboard.'),
+          backgroundColor: AppColors.loss,
+        ),
+      );
+      return;
+    }
+
     setState(() => _isJoining = true);
     await ref.read(userProvider.notifier).joinWeeklyTournament();
     if (mounted) {
@@ -40,6 +66,24 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
     }
   }
 
+  static bool isParticipantAdmin(String docId, Map<String, dynamic> data) {
+    final docIdLower = docId.toLowerCase();
+    final rawName = (data['name'] as String?)?.toLowerCase() ?? '';
+    final rawEmail = (data['email'] as String?)?.toLowerCase() ?? '';
+    final cleanName = rawName.contains('@') ? rawName.split('@').first : rawName;
+
+    return docIdLower == 'admin' ||
+        docIdLower.contains('admin@') ||
+        docIdLower.contains('admin_') ||
+        docIdLower.contains('_admin') ||
+        rawName.contains('admin') ||
+        cleanName == 'admin' ||
+        rawEmail.contains('admin') ||
+        rawEmail == 'admin@gmail.com' ||
+        data['isAdmin'] == true ||
+        data['role'] == 'admin';
+  }
+
   List<Map<String, dynamic>> _parseTournamentParticipants(List<QueryDocumentSnapshot> docs) {
     final List<Map<String, dynamic>> players = [];
 
@@ -49,6 +93,13 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
       }
       try {
         final data = doc.data() as Map<String, dynamic>;
+
+        // Exclude admin accounts from championship leaderboard & clean up stale doc
+        if (isParticipantAdmin(doc.id, data)) {
+          doc.reference.delete().catchError((_) {});
+          continue;
+        }
+
         final rawName = (data['name'] as String?) ?? 'Trader';
         final cleanName = rawName.contains('@') ? rawName.split('@').first : rawName;
 
@@ -106,8 +157,11 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
           final docs = snapshot.hasError ? <QueryDocumentSnapshot>[] : (snapshot.data?.docs ?? []);
           final players = _parseTournamentParticipants(docs);
 
-          // If list is empty or permissions fallback, show active user as baseline participant
-          if (players.isEmpty) {
+          final isAdmin = userState.profile.email.toLowerCase() == 'admin@gmail.com' ||
+              userState.profile.name.toLowerCase().contains('admin');
+
+          // If list is empty or permissions fallback, show active user as baseline participant (non-admin)
+          if (players.isEmpty && !isAdmin) {
             final myScore = (userState.profile.blitzWins * 5.0);
             players.add({
               'uid': userState.profile.email,
@@ -136,11 +190,17 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF2B1F0A), Color(0xFF161A1E)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
+                    gradient: AppColors.isDarkMode
+                        ? const LinearGradient(
+                            colors: [Color(0xFF2B1F0A), Color(0xFF161A1E)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          )
+                        : const LinearGradient(
+                            colors: [Color(0xFFFFFBEB), Color(0xFFFEF3C7)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: const Color(0xFFF3BA2F).withValues(alpha: 0.4), width: 1.5),
                   ),
@@ -152,9 +212,9 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
                         child: const Text('SEASON #3 • DEDICATED LEAGUE', style: TextStyle(color: Color(0xFFF3BA2F), fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1)),
                       ),
                       const SizedBox(height: 12),
-                      const Text('Weekly Crypto Trading Cup', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900)),
+                      Text('Weekly Crypto Trading Cup', style: TextStyle(color: AppColors.textPrimary, fontSize: 22, fontWeight: FontWeight.w900)),
                       const SizedBox(height: 6),
-                      const Text('All participants start at 0.0% weekly baseline. Win 1v1 duels to boost score!', style: TextStyle(color: Colors.white60, fontSize: 12), textAlign: TextAlign.center),
+                      Text('All participants start at 0.0% weekly baseline. Win 1v1 duels to boost score!', style: TextStyle(color: AppColors.textSecondary, fontSize: 12), textAlign: TextAlign.center),
                       const SizedBox(height: 16),
 
                       // Isolated Countdown Timer Widget (Prevents full-screen rebuild flickering)
@@ -165,7 +225,7 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.4),
+                          color: AppColors.isDarkMode ? Colors.black.withValues(alpha: 0.4) : Colors.white.withValues(alpha: 0.8),
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(color: const Color(0xFFF3BA2F).withValues(alpha: 0.3)),
                         ),
@@ -221,15 +281,15 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
                               ),
                             ),
                             const SizedBox(height: 6),
-                            const Text(
+                            Text(
                               '💡 Virtual Cash credited directly to winner’s paper trading wallet',
-                              style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.w500),
+                              style: TextStyle(color: AppColors.subtle, fontSize: 10, fontWeight: FontWeight.w500),
                             ),
                           ],
                         ),
                       ),
 
-                      if (!hasJoined) ...[
+                      if (!hasJoined && !isAdmin) ...[
                         const SizedBox(height: 18),
                         FilledButton(
                           onPressed: _isJoining ? null : _handleJoinTournament,
@@ -250,7 +310,7 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
                 const SizedBox(height: 24),
 
                 // ── PODIUM STAGE (TOP 3) ──────────────────────────────────────────
-                const Text('LEADERBOARD PODIUM', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 15, letterSpacing: 0.5)),
+                Text('LEADERBOARD PODIUM', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w900, fontSize: 15, letterSpacing: 0.5)),
                 const SizedBox(height: 16),
 
                 SizedBox(
@@ -276,8 +336,9 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('TOURNAMENT PARTICIPANTS', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 15, letterSpacing: 0.5)),
-                    Text('Your Rank: $myRankStr', style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontSize: 13)),
+                    Text('TOURNAMENT PARTICIPANTS', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w900, fontSize: 15, letterSpacing: 0.5)),
+                    if (!isAdmin)
+                      Text('Your Rank: $myRankStr', style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontSize: 13)),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -285,16 +346,18 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
                 if (players.isEmpty)
                   Container(
                     padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(color: const Color(0xFF141A21), borderRadius: BorderRadius.circular(16)),
+                    decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(16)),
                     child: Column(
                       children: [
-                        const Text('No tournament participants joined yet.', style: TextStyle(color: Colors.white54, fontSize: 13)),
-                        const SizedBox(height: 12),
-                        ElevatedButton(
-                          onPressed: _handleJoinTournament,
-                          style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
-                          child: const Text('Be First to Join (0.0%)', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-                        ),
+                        Text('No tournament participants joined yet.', style: TextStyle(color: AppColors.subtle, fontSize: 13)),
+                        if (!isAdmin) ...[
+                          const SizedBox(height: 12),
+                          ElevatedButton(
+                            onPressed: _handleJoinTournament,
+                            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+                            child: const Text('Be First to Join (0.0%)', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                          ),
+                        ],
                       ],
                     ),
                   )
@@ -311,30 +374,30 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
                       margin: const EdgeInsets.only(bottom: 8),
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                       decoration: BoxDecoration(
-                        color: isMe ? AppColors.primary.withValues(alpha: 0.1) : const Color(0xFF141A21),
+                        color: isMe ? AppColors.primary.withValues(alpha: 0.1) : AppColors.surface,
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: isMe ? AppColors.primary.withValues(alpha: 0.5) : Colors.white10),
+                        border: Border.all(color: isMe ? AppColors.primary.withValues(alpha: 0.5) : AppColors.outline),
                       ),
                       child: Row(
                         children: [
-                          SizedBox(
-                            width: 32,
-                            child: Text('#$rank', style: TextStyle(color: isMe ? AppColors.primary : Colors.white54, fontWeight: FontWeight.w800, fontSize: 14)),
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(minWidth: 46),
+                            child: Text(
+                              '#$rank',
+                              style: TextStyle(
+                                color: isMe ? AppColors.primary : AppColors.subtle,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 13,
+                              ),
+                              maxLines: 1,
+                              softWrap: false,
+                            ),
                           ),
-                          Container(
-                            width: 32,
-                            height: 32,
-                            decoration: const BoxDecoration(color: Color(0xFF1E2329), shape: BoxShape.circle),
-                            child: (item['photoUrl'] as String).isNotEmpty
-                                ? ClipOval(child: Image.network(item['photoUrl'] as String, fit: BoxFit.cover))
-                                : Center(
-                                    child: Text(
-                                      (item['name'] as String).trim().isNotEmpty
-                                          ? (item['name'] as String).trim()[0].toUpperCase()
-                                          : 'U',
-                                      style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold),
-                                    ),
-                                  ),
+                          const SizedBox(width: 4),
+                          AppAvatar(
+                            avatarUrl: item['photoUrl'] as String?,
+                            size: 34,
+                            fallbackName: item['name'] as String?,
                           ),
                           const SizedBox(width: 10),
                           Expanded(
@@ -346,7 +409,7 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
                                     Flexible(
                                       child: Text(
                                         item['name'] as String,
-                                        style: TextStyle(color: Colors.white, fontWeight: isMe ? FontWeight.w900 : FontWeight.bold, fontSize: 14),
+                                        style: TextStyle(color: AppColors.textPrimary, fontWeight: isMe ? FontWeight.w900 : FontWeight.bold, fontSize: 14),
                                         overflow: TextOverflow.ellipsis,
                                         maxLines: 1,
                                       ),
@@ -360,7 +423,7 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
                                       ),
                                   ],
                                 ),
-                                Text('$wins Wins • ${item['xp']} XP', style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                                Text('$wins Wins • ${item['xp']} XP', style: TextStyle(color: AppColors.subtle, fontSize: 11)),
                               ],
                             ),
                           ),
@@ -370,7 +433,7 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
                               Text(
                                 '${score > 0 ? '+' : ''}${score.toStringAsFixed(1)}%',
                                 style: TextStyle(
-                                  color: score > 0 ? AppColors.profit : Colors.white70,
+                                  color: score > 0 ? AppColors.profit : AppColors.subtle,
                                   fontWeight: FontWeight.w900,
                                   fontSize: 14,
                                 ),
@@ -417,24 +480,24 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
                 // ── RULES & INFO ─────────────────────────────────────────────────
                 Container(
                   padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(color: const Color(0xFF141A21), borderRadius: BorderRadius.circular(16)),
+                  decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(16), border: Border.all(color: AppColors.outline)),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Row(
+                      Row(
                         children: [
-                          Icon(Icons.emoji_events_rounded, color: Color(0xFFF3BA2F), size: 18),
-                          SizedBox(width: 8),
-                          Text('Championship Rules & Prizes', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                          const Icon(Icons.emoji_events_rounded, color: Color(0xFFF3BA2F), size: 18),
+                          const SizedBox(width: 8),
+                          Text('Championship Rules & Prizes', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 14)),
                         ],
                       ),
                       const SizedBox(height: 10),
-                      const Text('• Weekly Fresh Start: Leaderboard scores reset to 0.0% every week so all traders compete on equal footing.', style: TextStyle(color: Colors.white60, fontSize: 12, height: 1.5)),
-                      Text('• ${formatter.format(92000)} Virtual Cash Prize Pool: Top 10 win virtual cash for trading (#1: ${formatter.format(50000)} • #2: ${formatter.format(25000)} • #3: ${formatter.format(10000)} • #4 to #10: ${formatter.format(1000)} each).', style: const TextStyle(color: Colors.white60, fontSize: 12, height: 1.5)),
+                      Text('• Weekly Fresh Start: Leaderboard scores reset to 0.0% every week so all traders compete on equal footing.', style: TextStyle(color: AppColors.textSecondary, fontSize: 12, height: 1.5)),
+                      Text('• ${formatter.format(92000)} Virtual Cash Prize Pool: Top 10 win virtual cash for trading (#1: ${formatter.format(50000)} • #2: ${formatter.format(25000)} • #3: ${formatter.format(10000)} • #4 to #10: ${formatter.format(1000)} each).', style: TextStyle(color: AppColors.textSecondary, fontSize: 12, height: 1.5)),
                       const Text('• Positive Profit Requirement (>0.0%): Traders must cross 0.0% profit (>0.0%) to qualify for prize payouts. Participants with 0.0% or negative scores will not receive prize money even if placed in the Top 10.', style: TextStyle(color: Color(0xFFF3BA2F), fontSize: 12, fontWeight: FontWeight.bold, height: 1.5)),
-                      const Text('• Instant Winner Claim: All Top 10 winners receive an in-app celebration popup on app open to claim virtual cash into their wallet balance.', style: TextStyle(color: Colors.white60, fontSize: 12, height: 1.5)),
-                      const Text('• Zero Real-Money Risk: Prizes are virtual paper trading capital credited to your account for risk-free strategy execution.', style: TextStyle(color: Colors.white60, fontSize: 12, height: 1.5)),
-                      const Text('• 1v1 Blitz Arena Boost: Every blitz arena win awards +5.0% score directly to your championship tally.', style: TextStyle(color: Colors.white60, fontSize: 12, height: 1.5)),
+                      Text('• Instant Winner Claim: All Top 10 winners receive an in-app celebration popup on app open to claim virtual cash into their wallet balance.', style: TextStyle(color: AppColors.textSecondary, fontSize: 12, height: 1.5)),
+                      Text('• Zero Real-Money Risk: Prizes are virtual paper trading capital credited to your account for risk-free strategy execution.', style: TextStyle(color: AppColors.textSecondary, fontSize: 12, height: 1.5)),
+                      Text('• 1v1 Blitz Arena Boost: Every blitz arena win awards +5.0% score directly to your championship tally.', style: TextStyle(color: AppColors.textSecondary, fontSize: 12, height: 1.5)),
                     ],
                   ),
                 ),
@@ -458,7 +521,7 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
         children: [
           Text(rankLabel, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold)),
           const SizedBox(height: 2),
-          Text(prizeStr, style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w900)),
+          Text(prizeStr, style: TextStyle(color: AppColors.textPrimary, fontSize: 11, fontWeight: FontWeight.w900)),
         ],
       ),
     );
@@ -478,13 +541,13 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
         const SizedBox(height: 2),
         Text(
           name,
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+          style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 11),
           overflow: TextOverflow.ellipsis,
           maxLines: 1,
         ),
         Text(
           hasData ? '${score > 0 ? '+' : ''}${score.toStringAsFixed(1)}%' : '0.0%',
-          style: TextStyle(color: score > 0 ? AppColors.profit : Colors.white70, fontWeight: FontWeight.w900, fontSize: 11),
+          style: TextStyle(color: score > 0 ? AppColors.profit : AppColors.subtle, fontWeight: FontWeight.w900, fontSize: 11),
         ),
         const SizedBox(height: 4),
         Container(
@@ -598,20 +661,20 @@ class _CountdownTimerWidgetState extends State<_CountdownTimerWidget> {
   Widget _buildTimeUnit(String value, String label) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(color: const Color(0xFF1E2329), borderRadius: BorderRadius.circular(8)),
+      decoration: BoxDecoration(color: AppColors.surfaceAlt, borderRadius: BorderRadius.circular(8), border: Border.all(color: AppColors.outline)),
       child: Column(
         children: [
-          Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16)),
-          Text(label, style: const TextStyle(color: Colors.white38, fontSize: 9, fontWeight: FontWeight.bold)),
+          Text(value, style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w900, fontSize: 16)),
+          Text(label, style: TextStyle(color: AppColors.subtle, fontSize: 9, fontWeight: FontWeight.bold)),
         ],
       ),
     );
   }
 
   Widget _buildColon() {
-    return const Padding(
-      padding: EdgeInsets.symmetric(horizontal: 4),
-      child: Text(':', style: TextStyle(color: Colors.white30, fontWeight: FontWeight.bold, fontSize: 18)),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Text(':', style: TextStyle(color: AppColors.subtle, fontWeight: FontWeight.bold, fontSize: 18)),
     );
   }
 }

@@ -88,17 +88,68 @@ class QuizData {
     ),
   ];
 
-  static List<QuizQuestion> getDailyQuestions() {
+  static const List<QuizQuestion> _stockQuestions = [
+    QuizQuestion(
+      question: 'What does "P/E Ratio" stand for?',
+      options: ['Price-to-Earnings Ratio', 'Profit-to-Equity Ratio', 'Portfolio Expense Ratio', 'Public Enterprise Ratio'],
+      correctIndex: 0,
+      explanation: 'P/E Ratio measures a company\'s current share price relative to its per-share earnings.',
+    ),
+    QuizQuestion(
+      question: 'What is an "After-Market Order (AMO)"?',
+      options: ['An order queued outside regular market trading hours', 'An order placed only after 5:00 PM on Fridays', 'An order with guaranteed zero brokerage fees', 'An order for unlisted penny stocks'],
+      correctIndex: 0,
+      explanation: 'AMOs let investors place buy/sell orders when markets are closed, executed upon the opening bell.',
+    ),
+    QuizQuestion(
+      question: 'What is a "Dividend" in stock investing?',
+      options: ['A portion of company profits distributed to shareholders', 'A penalty tax charged by the exchange', 'The commission paid to an equity broker', 'A mandatory share buyback'],
+      correctIndex: 0,
+      explanation: 'Dividends are regular earnings distributions paid out by profitable companies to shareholders.',
+    ),
+    QuizQuestion(
+      question: 'What is an ETF?',
+      options: ['Exchange-Traded Fund tracking an index or asset basket', 'Electronic Transfer Facility for fast wires', 'Equity Total Forecast report', 'Emerging Tech Financing program'],
+      correctIndex: 0,
+      explanation: 'An ETF is an investment fund traded on stock exchanges, much like individual stocks (e.g. SPY, QQQ).',
+    ),
+    QuizQuestion(
+      question: 'What is "Intraday Margin" trading (e.g. 5x leverage)?',
+      options: ['Using broker leverage for positions squared off before close', 'Holding shares permanently with high loan interest', 'Trading only pre-market futures contracts', 'Guaranteed profit insurance'],
+      correctIndex: 0,
+      explanation: 'Intraday margin provides up to 5x purchasing power for day-trading positions during market hours.',
+    ),
+    QuizQuestion(
+      question: 'Which index benchmarks 50 of the largest Indian companies?',
+      options: ['NIFTY 50', 'S&P 500', 'DAX 40', 'FTSE 100'],
+      correctIndex: 0,
+      explanation: 'The NIFTY 50 is the benchmark Indian stock market index for large-cap companies listed on NSE.',
+    ),
+    QuizQuestion(
+      question: 'Which benchmark tracks 500 of the largest US companies?',
+      options: ['S&P 500', 'Dow 30', 'Russell 2000', 'Nasdaq Composite'],
+      correctIndex: 0,
+      explanation: 'The S&P 500 tracks 500 leading publicly traded companies in the United States.',
+    ),
+    QuizQuestion(
+      question: 'What qualifies a company as a "Blue Chip" stock?',
+      options: ['Well-established, financially stable, large market cap', 'A newly launched tech startup with high volatility', 'A micro-cap company under \$1 per share', 'A company that only trades on blue computer screens'],
+      correctIndex: 0,
+      explanation: 'Blue chip companies (e.g. Apple, Microsoft, Reliance, TCS) are renowned for stability and reliability.',
+    ),
+  ];
+
+  static List<QuizQuestion> getDailyQuestions([bool isStock = false]) {
     final now = DateTime.now();
     // Use the days since epoch to select 4 questions
     final dayIndex = now.difference(DateTime.utc(2020, 1, 1)).inDays;
     
     // Seed a pseudo-random generator with the day index so it's consistent all day
-    final seed = dayIndex;
+    final seed = dayIndex + (isStock ? 7919 : 0);
     int a = seed * 1103515245 + 12345;
     
     List<QuizQuestion> daily = [];
-    final pool = List<QuizQuestion>.from(_allQuestions);
+    final pool = List<QuizQuestion>.from(isStock ? _stockQuestions : _allQuestions);
     
     for (int i = 0; i < 4; i++) {
       a = a * 1103515245 + 12345;

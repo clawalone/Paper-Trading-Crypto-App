@@ -11,6 +11,9 @@ class CommunityState {
   final Map<String, PublicUserProfile> profiles;
   final Set<String> bookmarkedPostIds;
   final Set<String> followingUserIds;
+  final Set<String>? _blockedUserIds;
+
+  Set<String> get blockedUserIds => _blockedUserIds ?? const {};
 
   const CommunityState({
     required this.posts,
@@ -18,7 +21,8 @@ class CommunityState {
     required this.profiles,
     this.bookmarkedPostIds = const {},
     this.followingUserIds = const {},
-  });
+    Set<String>? blockedUserIds,
+  }) : _blockedUserIds = blockedUserIds ?? const {};
 
   CommunityState copyWith({
     List<CommunityPost>? posts,
@@ -26,6 +30,7 @@ class CommunityState {
     Map<String, PublicUserProfile>? profiles,
     Set<String>? bookmarkedPostIds,
     Set<String>? followingUserIds,
+    Set<String>? blockedUserIds,
   }) {
     return CommunityState(
       posts: posts ?? this.posts,
@@ -33,6 +38,7 @@ class CommunityState {
       profiles: profiles ?? this.profiles,
       bookmarkedPostIds: bookmarkedPostIds ?? this.bookmarkedPostIds,
       followingUserIds: followingUserIds ?? this.followingUserIds,
+      blockedUserIds: blockedUserIds ?? this.blockedUserIds,
     );
   }
 }
@@ -63,6 +69,7 @@ class CommunityNotifier extends Notifier<CommunityState> {
     }
 
     _loadBookmarks();
+    _loadBlockedUsers();
 
     return _initialState();
   }
@@ -330,6 +337,56 @@ class CommunityNotifier extends Notifier<CommunityState> {
     } catch (_) {}
 
     return isNowBookmarked;
+  }
+
+  static const String _prefBlockedUsersKey = 'blocked_community_users';
+
+  Future<void> _loadBlockedUsers() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList(_prefBlockedUsersKey) ?? [];
+      state = state.copyWith(blockedUserIds: list.toSet());
+    } catch (_) {}
+  }
+
+  Future<void> blockUser(String userId) async {
+    if (userId.isEmpty) return;
+    final updated = Set<String>.from(state.blockedUserIds)..add(userId);
+    state = state.copyWith(blockedUserIds: updated);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_prefBlockedUsersKey, updated.toList());
+    } catch (_) {}
+  }
+
+  Future<void> unblockUser(String userId) async {
+    if (userId.isEmpty) return;
+    final updated = Set<String>.from(state.blockedUserIds)..remove(userId);
+    state = state.copyWith(blockedUserIds: updated);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_prefBlockedUsersKey, updated.toList());
+    } catch (_) {}
+  }
+
+  Future<void> reportContent({
+    required String postId,
+    required String authorId,
+    required String reason,
+    String? details,
+  }) async {
+    try {
+      final currentUserId = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+      await FirebaseFirestore.instance.collection('reported_content').add({
+        'postId': postId,
+        'authorId': authorId,
+        'reporterId': currentUserId,
+        'reason': reason,
+        'details': details ?? '',
+        'timestamp': FieldValue.serverTimestamp(),
+        'status': 'pending_review',
+      });
+    } catch (_) {}
   }
 
   void toggleLike(String postId) {

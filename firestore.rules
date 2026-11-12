@@ -7,10 +7,11 @@ service cloud.firestore {
     // ===============================================================
     //
     // Collection: app_config
-    // Document ID: 'version' | 'promotions'
+    // Document ID: 'version' | 'promotions' | 'fcm_credentials'
     // Fields:
     //   - version: latestVersion (string), latestBuildNumber (int), updateMessage (string), forceUpdate (bool), updatedAt (timestamp)
     //   - promotions: offerId (string), title (string), message (string), badgeText (string), buttonText (string), isActive (bool), repeat (bool), updatedAt (timestamp)
+    //   - fcm_credentials: credentials (map), updatedAt (timestamp)
     //
     // Collection: users
     // Document ID: userId (matches request.auth.uid)
@@ -68,6 +69,12 @@ service cloud.firestore {
     //   - title (string), message (string), category (string), type (string),
     //     target (string), senderUid (string), createdAt (timestamp)
     //
+    // Collection: reported_content
+    // Document ID: auto-generated reportId
+    // Fields:
+    //   - postId (string), authorId (string), reporterId (string),
+    //     reason (string), details (string), timestamp (timestamp), status (string)
+    //
     // ===============================================================
 
     // ===============================================================
@@ -122,9 +129,26 @@ service cloud.firestore {
              (!('createdAt' in data) || data.createdAt is timestamp);
     }
 
+    function isValidReportedContent(data) {
+      return data.keys().hasAll(['postId', 'authorId', 'reporterId', 'reason', 'details', 'timestamp', 'status']) &&
+             data.keys().hasOnly(['postId', 'authorId', 'reporterId', 'reason', 'details', 'timestamp', 'status']) &&
+             data.postId is string && data.postId.size() > 0 && data.postId.size() <= 128 &&
+             data.authorId is string && data.authorId.size() > 0 && data.authorId.size() <= 128 &&
+             data.reporterId is string && data.reporterId.size() > 0 && data.reporterId.size() <= 128 &&
+             data.reason is string && data.reason.size() > 0 && data.reason.size() <= 200 &&
+             data.details is string && data.details.size() <= 1000 &&
+             data.timestamp is timestamp &&
+             data.status is string && data.status.size() > 0 && data.status.size() <= 50;
+    }
+
+    // ── APP CONFIG: FCM CREDENTIALS (ADMIN-ONLY ACCESS FOR PUSH NOTIFICATIONS) ──
+    match /app_config/fcm_credentials {
+      allow read, write: if isAuthenticated() && isAdmin();
+    }
+
     // ── APP CONFIG COLLECTION (IN-APP UPDATE CHECKS & SETTINGS) ─────
     match /app_config/{docId} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthenticated() && docId != 'fcm_credentials';
       allow create, update, delete: if isAdmin();
     }
 
@@ -140,7 +164,31 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && request.auth.uid == userId;
-      allow update: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow update: if isAuthenticated() && (
+        isAdmin() ||
+        (
+          request.auth.uid == userId &&
+          // Disallow banned users from unbanning themselves
+          (!('isBanned' in resource.data) || resource.data.isBanned != true || request.resource.data.get('isBanned', false) == true) &&
+          (!('profile' in resource.data) || !(resource.data.profile is map) || resource.data.profile.get('isBanned', false) != true || request.resource.data.get('profile', {}).get('isBanned', false) == true) &&
+          // Global Anti-Cheat: Reject fabricated spot limit orders exceeding 100M quantity
+          (
+            !('spotLimitOrders' in request.resource.data) ||
+            request.resource.data.spotLimitOrders.size() == 0 ||
+            (
+              ('spotLimitOrders' in resource.data) &&
+              request.resource.data.spotLimitOrders.size() <= resource.data.spotLimitOrders.size()
+            ) ||
+            (
+              request.resource.data.spotLimitOrders[0].quantity is number &&
+              request.resource.data.spotLimitOrders[0].quantity > 0 &&
+              request.resource.data.spotLimitOrders[0].quantity <= 100000000 &&
+              request.resource.data.spotLimitOrders[0].targetPrice is number &&
+              request.resource.data.spotLimitOrders[0].targetPrice > 0
+            )
+          )
+        )
+      );
       allow delete: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
 
       match /following/{followingId} {
@@ -207,13 +255,28 @@ service cloud.firestore {
 
     // ── COMMUNITY POSTS COLLECTION ────────────────────────────────
     match /community_posts/{postId} {
-      allow read, create, update: if true;
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && (
+        request.resource.data.authorId == request.auth.uid || isAdmin()
+      );
+      allow update: if isAuthenticated() && (
+        (resource.data.authorId == request.auth.uid && (!('authorId' in request.resource.data) || request.resource.data.authorId == resource.data.authorId)) ||
+        isAdmin() ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likesCount', 'likedBy', 'commentsCount', 'tipsReceived', 'agreeCount', 'disagreeCount', 'votes'])
+      );
       allow delete: if isAuthenticated() && (resource.data.authorId == request.auth.uid || isAdmin());
     }
 
     // ── COMMUNITY COMMENTS COLLECTION ─────────────────────────────
     match /community_comments/{commentId} {
-      allow read, create, update: if true;
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && (
+        request.resource.data.authorId == request.auth.uid || isAdmin()
+      );
+      allow update: if isAuthenticated() && (
+        (resource.data.authorId == request.auth.uid && (!('authorId' in request.resource.data) || request.resource.data.authorId == resource.data.authorId)) ||
+        isAdmin()
+      );
       allow delete: if isAuthenticated() && (resource.data.authorId == request.auth.uid || isAdmin());
     }
 
@@ -241,6 +304,16 @@ service cloud.firestore {
             request.resource.data.claimed == true
           ) || isAdmin()
         );
+      allow delete: if isAdmin();
+    }
+
+    // ── REPORTED CONTENT COLLECTION (UGC MODERATION) ──────────────
+    match /reported_content/{reportId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated() &&
+        (request.resource.data.reporterId == request.auth.uid || isAdmin()) &&
+        isValidReportedContent(request.resource.data);
+      allow update: if isAdmin() && isValidReportedContent(request.resource.data);
       allow delete: if isAdmin();
     }
 

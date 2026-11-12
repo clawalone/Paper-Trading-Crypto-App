@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart';
 
 class TwitterBellIcon extends StatelessWidget {
   final double size;

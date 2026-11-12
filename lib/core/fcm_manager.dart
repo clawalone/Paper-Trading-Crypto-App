@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -17,9 +17,16 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   } catch (_) {}
 
   debugPrint('[FCM Background] Received message: ${message.messageId}');
-  final notif = _parseRemoteMessage(message);
-  if (notif != null) {
-    await SystemNotificationManager.showSystemNotification(notif);
+
+  // CRITICAL: When an FCM message contains a `notification` payload, Android's
+  // Google Play Services client automatically renders it in the system tray.
+  // Calling showSystemNotification here creates a duplicate 2nd notification in the tray!
+  // We ONLY show a local system notification if it was a data-only payload (notification == null).
+  if (message.notification == null) {
+    final notif = _parseRemoteMessage(message);
+    if (notif != null) {
+      await SystemNotificationManager.showSystemNotification(notif);
+    }
   }
 }
 
@@ -80,11 +87,13 @@ class FcmManager {
 
       debugPrint('[FCM] Authorization status: ${settings.authorizationStatus}');
 
-      // 3. Foreground presentation options
+      // 3. Foreground presentation options:
+      // Set alert to false so Android/iOS doesn't post a duplicate system tray notification
+      // while the user is actively inside the app; InAppNotificationBanner handles the foreground UI.
       await messaging.setForegroundNotificationPresentationOptions(
-        alert: true,
+        alert: false,
         badge: true,
-        sound: true,
+        sound: false,
       );
 
       // 4. Subscribe to global broadcast topics
@@ -97,7 +106,13 @@ class FcmManager {
         debugPrint('[FCM Foreground] Got message: ${message.messageId}');
         final notif = _parseRemoteMessage(message);
         if (notif != null) {
-          // Trigger in-app Twitter banner
+          // Check deduplication (prevent double banners if both topic and direct tokens received)
+          if (SystemNotificationManager.shouldSuppressDuplicate(notif.title, notif.message)) {
+            debugPrint('[FCM Foreground] Duplicate suppressed: ${notif.title}');
+            return;
+          }
+
+          // Trigger in-app dropdown banner
           final ctx = appNavigatorKey.currentContext;
           if (ctx != null) {
             InAppNotificationBanner.show(
@@ -105,8 +120,6 @@ class FcmManager {
               onTap: () => NotificationNavigator.handleTap(ctx, null, notif),
             );
           }
-          // Also show native system tray notification
-          SystemNotificationManager.showSystemNotification(notif);
         }
       });
 

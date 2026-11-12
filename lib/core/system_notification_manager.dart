@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../data/models.dart';
@@ -59,7 +59,7 @@ class SystemNotificationManager {
         const AndroidNotificationChannel(
           _channelChampionship,
           'Championship & Tournament Alerts',
-          description: 'Weekly tournament results, rank changes, and cash prize payouts',
+          description: 'Weekly tournament results, rank changes, and virtual prize payouts',
           importance: Importance.high,
           playSound: true,
           enableVibration: true,
@@ -112,7 +112,32 @@ class SystemNotificationManager {
     }
   }
 
+  static final Map<String, DateTime> _recentDeduplicationMap = {};
+
+  /// Checks if a notification with the same title and message was already handled
+  /// within the last 20 seconds. Returns true if duplicate and should be suppressed.
+  static bool shouldSuppressDuplicate(String title, String message) {
+    final key = '$title::$message'.trim();
+    final now = DateTime.now();
+    _recentDeduplicationMap.removeWhere((_, time) => now.difference(time).inSeconds > 60);
+
+    if (_recentDeduplicationMap.containsKey(key)) {
+      final prev = _recentDeduplicationMap[key]!;
+      if (now.difference(prev).inSeconds < 20) {
+        return true;
+      }
+    }
+    _recentDeduplicationMap[key] = now;
+    return false;
+  }
+
   static Future<void> showSystemNotification(AppNotification notif) async {
+    // Prevent duplicate system tray notifications within short succession
+    if (shouldSuppressDuplicate(notif.title, notif.message)) {
+      debugPrint('[SystemNotificationManager] Duplicate system notification suppressed: ${notif.title}');
+      return;
+    }
+
     if (!_isInitialized) {
       await initialize();
     }

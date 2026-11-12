@@ -40,6 +40,7 @@ class NotificationNotifier extends Notifier<NotificationState> {
   StreamSubscription? _authSub;
   String? _currentUid;
   bool _isFirstSnapshot = true;
+  DateTime? _listenerStartedAt;
 
   @override
   NotificationState build() {
@@ -108,6 +109,7 @@ class NotificationNotifier extends Notifier<NotificationState> {
   void _listenToNotifications(String uid) {
     _sub?.cancel();
     _isFirstSnapshot = true;
+    _listenerStartedAt = DateTime.now();
     _sub = FirebaseFirestore.instance
         .collection('users')
         .doc(uid)
@@ -129,22 +131,27 @@ class NotificationNotifier extends Notifier<NotificationState> {
           return;
         }
 
-        // Trigger in-app top banner for new incoming alerts while user is active
+        // Trigger in-app top banner ONLY for brand new incoming alerts that arrived
+        // in real-time DURING this active session. Past notifications received while the app
+        // was closed are safely listed in inbox without re-popping banners or duplicating!
         if (!_isFirstSnapshot && items.isNotEmpty) {
           final existingIds = state.notifications.map((n) => n.id).toSet();
           for (final item in items) {
             if (!existingIds.contains(item.id) && !item.isRead) {
-              final age = DateTime.now().difference(item.createdAt);
-              if (age.inMinutes.abs() <= 15) {
-                final ctx = appNavigatorKey.currentContext;
-                if (ctx != null) {
-                  InAppNotificationBanner.show(
-                    item,
-                    onTap: () => NotificationNavigator.handleTap(ctx, ref, item),
-                  );
+              final isCreatedDuringCurrentSession = _listenerStartedAt != null &&
+                  item.createdAt.isAfter(_listenerStartedAt!.subtract(const Duration(seconds: 5)));
+
+              if (isCreatedDuringCurrentSession) {
+                // Deduplicate against FCM foreground handler so banner never shows twice
+                if (!SystemNotificationManager.shouldSuppressDuplicate(item.title, item.message)) {
+                  final ctx = appNavigatorKey.currentContext;
+                  if (ctx != null) {
+                    InAppNotificationBanner.show(
+                      item,
+                      onTap: () => NotificationNavigator.handleTap(ctx, ref, item),
+                    );
+                  }
                 }
-                // Also trigger OS system tray push notification
-                SystemNotificationManager.showSystemNotification(item);
               }
             }
           }
@@ -197,13 +204,12 @@ class NotificationNotifier extends Notifier<NotificationState> {
 
         final ctx = appNavigatorKey.currentContext;
         if (ctx != null && !toSave.isRead && toSave.type != 'welcome') {
-          InAppNotificationBanner.show(
-            toSave,
-            onTap: () => NotificationNavigator.handleTap(ctx, ref, toSave),
-          );
-        }
-        if (!toSave.isRead && toSave.type != 'welcome') {
-          SystemNotificationManager.showSystemNotification(toSave);
+          if (!SystemNotificationManager.shouldSuppressDuplicate(toSave.title, toSave.message)) {
+            InAppNotificationBanner.show(
+              toSave,
+              onTap: () => NotificationNavigator.handleTap(ctx, ref, toSave),
+            );
+          }
         }
       }
       return true;

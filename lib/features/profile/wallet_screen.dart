@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -8,6 +8,7 @@ import '../../core/app_theme.dart';
 import '../../core/currency_formatters.dart';
 import '../../data/models.dart';
 import '../../data/user_provider.dart';
+import '../../core/app_translations.dart';
 
 // ─── Unified wallet entry ─────────────────────────────────────────────────────
 class WalletEntry {
@@ -57,16 +58,16 @@ class WalletScreen extends ConsumerWidget {
         backgroundColor: AppColors.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: Icon(Icons.arrow_back, color: AppColors.textPrimary),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text('Wallet',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 18)),
+        title: Text('Wallet'.tr(),
+            style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w700, fontSize: 18)),
         centerTitle: false,
       ),
       body: SafeArea(
         child: user == null
-            ? const Center(child: Text('Not logged in', style: TextStyle(color: Colors.white54)))
+            ? Center(child: Text('Not logged in'.tr(), style: TextStyle(color: AppColors.textMuted)))
             : _WalletBody(uid: user.uid, userState: userState, formatter: formatter),
       ),
     );
@@ -165,26 +166,27 @@ class _WalletBody extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1E2329),
+                  color: AppColors.surface,
                   borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppColors.outline),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Available Balance',
+                    Text('Available Balance'.tr(),
                         style: TextStyle(
-                            color: Color(0xFF848E9C), fontSize: 12, fontWeight: FontWeight.w500)),
+                            color: AppColors.subtle, fontSize: 12, fontWeight: FontWeight.w500)),
                     const SizedBox(height: 6),
                     Text(
                       formatter.format(userState.profile.virtualBalance),
-                      style: const TextStyle(
-                          color: Colors.white,
+                      style: TextStyle(
+                          color: AppColors.textPrimary,
                           fontSize: 26,
                           fontWeight: FontWeight.w700,
                           letterSpacing: -0.5),
                     ),
                     const SizedBox(height: 16),
-                    const Divider(color: Color(0xFF2B3139), height: 1),
+                    Divider(color: AppColors.outline, height: 1),
                     const SizedBox(height: 16),
                     Row(
                       children: [
@@ -196,7 +198,7 @@ class _WalletBody extends StatelessWidget {
                             icon: Icons.arrow_downward_rounded,
                           ),
                         ),
-                        Container(width: 1, height: 36, color: const Color(0xFF2B3139)),
+                        Container(width: 1, height: 36, color: AppColors.outline),
                         Expanded(
                           child: _SummaryCell(
                             label: 'Total Out',
@@ -214,23 +216,23 @@ class _WalletBody extends StatelessWidget {
 
             const SizedBox(height: 20),
 
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: Text('Transactions',
-                  style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700)),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text('Transactions'.tr(),
+                  style: TextStyle(color: AppColors.textPrimary, fontSize: 15, fontWeight: FontWeight.w700)),
             ),
             const SizedBox(height: 4),
 
             Expanded(
               child: entries.isEmpty
-                  ? const Center(
+                  ? Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.receipt_long_outlined, color: Color(0xFF2B3139), size: 48),
-                          SizedBox(height: 12),
-                          Text('No transactions yet',
-                              style: TextStyle(color: Color(0xFF4B5563), fontSize: 15)),
+                          Icon(Icons.receipt_long_outlined, color: AppColors.textMuted, size: 48),
+                          const SizedBox(height: 12),
+                          Text('No transactions yet'.tr(),
+                              style: TextStyle(color: AppColors.textMuted, fontSize: 15)),
                         ],
                       ),
                     )
@@ -238,7 +240,7 @@ class _WalletBody extends StatelessWidget {
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
                       itemCount: entries.length,
                       separatorBuilder: (_, __) =>
-                          const Divider(color: Color(0xFF1E2329), height: 1),
+                          Divider(color: AppColors.outline, height: 1),
                       itemBuilder: (_, i) =>
                           _TxTile(entry: entries[i], formatter: formatter),
                     ),
@@ -282,18 +284,18 @@ class _TxTile extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(entry.title,
-                    style: const TextStyle(
-                        color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                    style: TextStyle(
+                        color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w600)),
                 if (entry.subtitle.isNotEmpty) ...[
                   const SizedBox(height: 2),
                   Text(entry.subtitle,
-                      style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12),
+                      style: TextStyle(color: AppColors.subtle, fontSize: 12),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis),
                 ],
                 const SizedBox(height: 2),
                 Text(dateStr,
-                    style: const TextStyle(color: Color(0xFF4B5563), fontSize: 11)),
+                    style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
               ],
             ),
           ),
@@ -340,7 +342,7 @@ class _SummaryCell extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: const TextStyle(color: Color(0xFF6B7280), fontSize: 11)),
+                Text(label.tr(), style: const TextStyle(color: Color(0xFF6B7280), fontSize: 11)),
                 const SizedBox(height: 2),
                 Text(value,
                     style: TextStyle(

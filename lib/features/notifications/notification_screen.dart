@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -57,7 +57,7 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> with Si
         elevation: 0,
         scrolledUnderElevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
+          icon: Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.textPrimary, size: 18),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
@@ -65,7 +65,7 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> with Si
           style: GoogleFonts.inter(
             fontWeight: FontWeight.bold,
             fontSize: 18,
-            color: Colors.white,
+            color: AppColors.textPrimary,
           ),
         ),
         actions: [
@@ -83,10 +83,10 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> with Si
             ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert_rounded, color: AppColors.subtle, size: 20),
-            color: const Color(0xFF161A1E),
+            color: AppColors.surface,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
-              side: const BorderSide(color: Color(0xFF262D35)),
+              side: BorderSide(color: AppColors.outline),
             ),
             onSelected: (value) {
               if (value == 'read_all') {
@@ -102,7 +102,7 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> with Si
                   children: [
                     const Icon(Icons.done_all_rounded, size: 16, color: Color(0xFF1D9BF0)),
                     const SizedBox(width: 8),
-                    Text('Mark all as read', style: GoogleFonts.inter(color: Colors.white, fontSize: 13)),
+                    Text('Mark all as read', style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 13)),
                   ],
                 ),
               ),
@@ -122,9 +122,9 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> with Si
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(44),
           child: Container(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               border: Border(
-                bottom: BorderSide(color: Color(0xFF1E2329), width: 1),
+                bottom: BorderSide(color: AppColors.outline, width: 1),
               ),
             ),
             child: TabBar(
@@ -132,7 +132,7 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> with Si
               isScrollable: false,
               indicatorColor: const Color(0xFF1D9BF0),
               indicatorWeight: 3,
-              labelColor: Colors.white,
+              labelColor: AppColors.textPrimary,
               unselectedLabelColor: AppColors.subtle,
               labelStyle: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold),
               unselectedLabelStyle: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w500),
@@ -184,7 +184,7 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> with Si
               Text(
                 'Nothing to see here — yet',
                 style: GoogleFonts.inter(
-                  color: Colors.white,
+                  color: AppColors.textPrimary,
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
                 ),
@@ -194,7 +194,7 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> with Si
                 'From trade fills and liquidation alerts to weekly championship prizes, your alerts will show up here.',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.inter(
-                  color: AppColors.muted,
+                  color: AppColors.subtle,
                   fontSize: 13,
                   height: 1.4,
                 ),
@@ -207,8 +207,8 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> with Si
 
     return ListView.separated(
       itemCount: items.length,
-      separatorBuilder: (_, __) => const Divider(
-        color: Color(0xFF181B1E),
+      separatorBuilder: (_, __) => Divider(
+        color: AppColors.outline,
         height: 1,
         thickness: 0.8,
       ),
@@ -238,7 +238,9 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> with Si
       child: InkWell(
         onTap: () => _handleNotificationTap(notif),
         child: Container(
-          color: isUnread ? const Color(0xFF121518) : Colors.transparent,
+          color: isUnread
+              ? (AppColors.isDarkMode ? const Color(0xFF121518) : AppColors.primary.withValues(alpha: 0.06))
+              : Colors.transparent,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -268,7 +270,7 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> with Si
                           child: Text(
                             notif.title,
                             style: GoogleFonts.inter(
-                              color: Colors.white,
+                              color: AppColors.textPrimary,
                               fontSize: 14,
                               fontWeight: isUnread ? FontWeight.bold : FontWeight.w600,
                             ),
@@ -280,7 +282,7 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> with Si
                         Text(
                           _formatRelativeTime(notif.createdAt),
                           style: GoogleFonts.inter(
-                            color: isUnread ? const Color(0xFF1D9BF0) : AppColors.muted,
+                            color: isUnread ? const Color(0xFF1D9BF0) : AppColors.subtle,
                             fontSize: 11,
                             fontWeight: isUnread ? FontWeight.w600 : FontWeight.normal,
                           ),
@@ -293,7 +295,7 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> with Si
                     Text(
                       notif.message,
                       style: GoogleFonts.inter(
-                        color: isUnread ? Colors.white70 : AppColors.subtle,
+                        color: isUnread ? AppColors.textPrimary : AppColors.textSecondary,
                         fontSize: 13,
                         height: 1.35,
                       ),
@@ -305,9 +307,9 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> with Si
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF181B20),
+                          color: AppColors.surfaceAlt,
                           borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: const Color(0xFF262D35), width: 0.8),
+                          border: Border.all(color: AppColors.outline, width: 0.8),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -315,7 +317,7 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> with Si
                             Text(
                               notif.data['symbol']?.toString() ?? '',
                               style: GoogleFonts.inter(
-                                color: Colors.white,
+                                color: AppColors.textPrimary,
                                 fontWeight: FontWeight.bold,
                                 fontSize: 11,
                               ),

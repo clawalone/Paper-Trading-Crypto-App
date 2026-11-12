@@ -121,8 +121,8 @@ lib/
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/clawalone/Paper-Trading-Crypto-App.git
-   cd Paper-Trading-Crypto-App
+   git clone https://github.com/clawalone/Paper-Trading---Crypto.git
+   cd Paper-Trading---Crypto
    ```
 
 2. **Install project dependencies**:
@@ -131,8 +131,7 @@ lib/
    ```
 
 3. **Configure Firebase**:
-   - Create a Firebase project and enable Authentication & Firestore.
-   - Place your `google-services.json` inside `android/app/` (refer to `android/app/google-services.json.example`).
+   - Place your `google-services.json` inside `android/app/`.
    - Place `GoogleService-Info.plist` inside `ios/Runner/` (if targeting iOS).
    - Alternatively, configure via FlutterFire CLI:
      ```bash

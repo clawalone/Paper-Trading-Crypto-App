@@ -1,9 +1,10 @@
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/app_theme.dart';
+import '../../core/avatar_helper.dart';
 import '../../data/community_provider.dart';
 import '../../data/user_provider.dart';
 import '../news/news_screen.dart';
@@ -14,6 +15,7 @@ import 'widgets/post_card.dart';
 import 'widgets/tip_modal.dart';
 import 'widgets/user_profile_modal.dart';
 import 'widgets/vote_modal.dart';
+import '../../core/app_translations.dart';
 
 class CommunityScreen extends ConsumerStatefulWidget {
   const CommunityScreen({super.key});
@@ -89,7 +91,7 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> with SingleTi
 
     final userAvatar = userProfile.photoUrl.isNotEmpty
         ? userProfile.photoUrl
-        : 'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Animals/Unicorn.png';
+        : AppAvatarHelper.defaultFallback;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -99,58 +101,51 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> with SingleTi
         scrolledUnderElevation: 0,
         titleSpacing: 16,
         leadingWidth: 54,
-        leading: Padding(
-          padding: const EdgeInsets.only(left: 16),
-          child: GestureDetector(
-            onTap: () {
-              if (currentUserId.isNotEmpty) {
-                showModalBottomSheet(
-                  context: context,
-                  backgroundColor: AppColors.surface,
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-                  ),
-                  builder: (context) => UserProfileModal(
-                    userId: currentUserId,
-                    fallbackName: userProfile.name.isNotEmpty ? userProfile.name : 'My Profile',
-                    fallbackAvatar: userAvatar,
-                  ),
-                );
-              }
-            },
-            child: Container(
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                shape: BoxShape.circle,
+        leading: Align(
+          alignment: Alignment.centerLeft,
+          child: Padding(
+            padding: const EdgeInsets.only(left: 16),
+            child: GestureDetector(
+              onTap: () {
+                if (currentUserId.isNotEmpty) {
+                  showModalBottomSheet(
+                    context: context,
+                    backgroundColor: AppColors.surface,
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                    ),
+                    builder: (context) => UserProfileModal(
+                      userId: currentUserId,
+                      fallbackName: userProfile.name.isNotEmpty ? userProfile.name : 'My Profile',
+                      fallbackAvatar: userAvatar,
+                    ),
+                  );
+                }
+              },
+              child: AppAvatar(
+                avatarUrl: userAvatar,
+                size: 34,
+                fallbackName: userProfile.name,
+                backgroundColor: AppColors.surface,
                 border: Border.all(color: AppColors.outline, width: 1),
-              ),
-              padding: const EdgeInsets.all(2.5),
-              child: ClipOval(
-                child: Image.network(
-                  userAvatar,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => const Icon(Icons.person, color: AppColors.subtle, size: 18),
-                ),
               ),
             ),
           ),
         ),
         title: Center(
           child: Text(
-            'Community',
+            'Community'.tr(),
             style: GoogleFonts.grandHotel(
               fontSize: 27,
               fontWeight: FontWeight.w600,
-              color: Colors.white,
+              color: AppColors.textPrimary,
               letterSpacing: 0.5,
             ),
           ),
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.people_outline_rounded, color: Colors.white, size: 22),
+            icon: Icon(Icons.people_outline_rounded, color: AppColors.textPrimary, size: 22),
             tooltip: 'Traders Network',
             onPressed: _openTradersDirectory,
           ),
@@ -159,7 +154,7 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> with SingleTi
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(44),
           child: Container(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               border: Border(
                 bottom: BorderSide(color: AppColors.outline, width: 0.8),
               ),
@@ -169,15 +164,15 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> with SingleTi
               indicatorColor: AppColors.primary,
               indicatorWeight: 3,
               indicatorSize: TabBarIndicatorSize.label,
-              labelColor: Colors.white,
+              labelColor: AppColors.textPrimary,
               unselectedLabelColor: AppColors.subtle,
               labelStyle: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 15),
               unselectedLabelStyle: GoogleFonts.inter(fontWeight: FontWeight.w500, fontSize: 15),
               dividerColor: Colors.transparent,
-              tabs: const [
-                Tab(text: 'For you'),
-                Tab(text: 'Following'),
-                Tab(text: 'News'),
+              tabs: [
+                Tab(text: 'For you'.tr()),
+                Tab(text: 'Following'.tr()),
+                Tab(text: 'News'.tr()),
               ],
             ),
           ),
@@ -224,6 +219,9 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> with SingleTi
     required String userAvatar,
   }) {
     final posts = communityState.posts.where((post) {
+      if (communityState.blockedUserIds.contains(post.authorId)) {
+        return false;
+      }
       if (isFollowingOnly) {
         final isFollowed = communityState.followingUserIds.contains(post.authorId) ||
             (communityState.profiles[post.authorId]?.isFollowing ?? false);
@@ -258,7 +256,7 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> with SingleTi
           SliverToBoxAdapter(
             child: Container(
               height: 42,
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 border: Border(
                   bottom: BorderSide(color: AppColors.outline, width: 0.8),
                 ),
@@ -290,7 +288,7 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> with SingleTi
                         child: Text(
                           filter,
                           style: GoogleFonts.inter(
-                            color: isSelected ? Colors.black : Colors.white70,
+                            color: isSelected ? Colors.black : AppColors.textSecondary,
                             fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                             fontSize: 13,
                           ),
@@ -318,7 +316,7 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> with SingleTi
                       Text(
                         isFollowingOnly ? 'Welcome to your timeline!' : 'No posts in $_selectedFilter',
                         style: GoogleFonts.inter(
-                          color: Colors.white,
+                          color: AppColors.textPrimary,
                           fontWeight: FontWeight.w700,
                           fontSize: 18,
                         ),
@@ -450,7 +448,7 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> with SingleTi
     return GestureDetector(
       onTap: _openCreatePostSheet,
       child: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: AppColors.background,
           border: Border(
             bottom: BorderSide(color: AppColors.outline, width: 0.8),
@@ -461,22 +459,11 @@ class _CommunityScreenState extends ConsumerState<CommunityScreen> with SingleTi
           children: [
             Row(
               children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AppColors.outline, width: 1),
-                  ),
-                  padding: const EdgeInsets.all(2.5),
-                  child: ClipOval(
-                    child: Image.network(
-                      userAvatar,
-                      fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => const Icon(Icons.person, color: AppColors.subtle, size: 18),
-                    ),
-                  ),
+                AppAvatar(
+                  avatarUrl: userAvatar,
+                  size: 36,
+                  backgroundColor: AppColors.surface,
+                  border: Border.all(color: AppColors.outline, width: 1),
                 ),
                 const SizedBox(width: 12),
                 Expanded(

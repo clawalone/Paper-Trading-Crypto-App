@@ -1,0 +1,151 @@
+{
+  "@@locale": "en",
+  "appTitle": "PaperTrading - Crypto & Stocks",
+  "@appTitle": {
+    "description": "The title of the application"
+  },
+  "navHome": "Home",
+  "@navHome": {
+    "description": "Home bottom navigation tab"
+  },
+  "navSpot": "Spot",
+  "@navSpot": {
+    "description": "Spot trading bottom navigation tab"
+  },
+  "navFutures": "Futures",
+  "@navFutures": {
+    "description": "Futures trading bottom navigation tab"
+  },
+  "navPortfolio": "Portfolio",
+  "@navPortfolio": {
+    "description": "Portfolio bottom navigation tab"
+  },
+  "navHub": "Hub",
+  "@navHub": {
+    "description": "Community Hub bottom navigation tab"
+  },
+  "buy": "Buy",
+  "@buy": {
+    "description": "Buy action"
+  },
+  "sell": "Sell",
+  "@sell": {
+    "description": "Sell action"
+  },
+  "trade": "Trade",
+  "@trade": {
+    "description": "Trade action"
+  },
+  "cancel": "Cancel",
+  "@cancel": {
+    "description": "Cancel action"
+  },
+  "confirm": "Confirm",
+  "@confirm": {
+    "description": "Confirm action"
+  },
+  "save": "Save",
+  "@save": {
+    "description": "Save action"
+  },
+  "done": "Done",
+  "@done": {
+    "description": "Done action"
+  },
+  "retry": "Retry",
+  "@retry": {
+    "description": "Retry action"
+  },
+  "loading": "Loading...",
+  "@loading": {
+    "description": "Loading indicator text"
+  },
+  "search": "Search",
+  "@search": {
+    "description": "Search input placeholder"
+  },
+  "topUp": "Top Up",
+  "@topUp": {
+    "description": "Top up virtual money action"
+  },
+  "settings": "Settings",
+  "@settings": {
+    "description": "Settings menu header"
+  },
+  "language": "Language",
+  "@language": {
+    "description": "Language selector setting"
+  },
+  "selectLanguage": "Select Language",
+  "@selectLanguage": {
+    "description": "Title of language picker dialog"
+  },
+  "currency": "Currency",
+  "@currency": {
+    "description": "Currency selector setting"
+  },
+  "theme": "Theme",
+  "@theme": {
+    "description": "App theme selector setting"
+  },
+  "security": "Security",
+  "@security": {
+    "description": "Security settings"
+  },
+  "helpSupport": "Help & Support",
+  "@helpSupport": {
+    "description": "Help and customer support"
+  },
+  "privacyPolicy": "Privacy Policy",
+  "@privacyPolicy": {
+    "description": "Privacy policy link"
+  },
+  "termsOfService": "Terms of Service",
+  "@termsOfService": {
+    "description": "Terms of service link"
+  },
+  "logout": "Log Out",
+  "@logout": {
+    "description": "Log out action"
+  },
+  "logoutConfirm": "Are you sure you want to log out?",
+  "@logoutConfirm": {
+    "description": "Confirmation message before logging out"
+  },
+  "totalBalance": "Total Balance",
+  "@totalBalance": {
+    "description": "Portfolio total balance label"
+  },
+  "availableCash": "Available Cash",
+  "@availableCash": {
+    "description": "Available simulator cash label"
+  },
+  "portfolioValue": "Portfolio Value",
+  "@portfolioValue": {
+    "description": "Portfolio value label"
+  },
+  "pnl24h": "24h P&L",
+  "@pnl24h": {
+    "description": "24 hour profit and loss label"
+  },
+  "leaderboard": "Rank",
+  "@leaderboard": {
+    "description": "Rank bottom navigation tab"
+  },
+  "watchlist": "Watchlist",
+  "@watchlist": {
+    "description": "Watchlist section title"
+  },
+  "marketOverview": "Market Overview",
+  "@marketOverview": {
+    "description": "Market overview section title"
+  },
+  "gainers": "Top Gainers",
+  "@gainers": {
+    "description": "Top gainers title"
+  },
+  "losers": "Top Losers",
+  "@losers": {
+    "description": "Top losers title"
+  }
+}

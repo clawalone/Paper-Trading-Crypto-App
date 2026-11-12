@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -7,6 +7,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../../../core/app_theme.dart';
 import '../../../data/community_provider.dart';
 import 'user_profile_modal.dart';
+import '../../../core/avatar_helper.dart';
 
 class NetworkFollowingTab extends ConsumerStatefulWidget {
   const NetworkFollowingTab({super.key});
@@ -47,7 +48,7 @@ class _NetworkFollowingTabState extends ConsumerState<NetworkFollowingTab> {
                     child: Text(
                       'Following',
                       style: GoogleFonts.inter(
-                        color: _subTabIndex == 0 ? Colors.black : Colors.white,
+                        color: _subTabIndex == 0 ? Colors.black : AppColors.textPrimary,
                         fontWeight: FontWeight.bold,
                         fontSize: 13,
                       ),
@@ -72,7 +73,7 @@ class _NetworkFollowingTabState extends ConsumerState<NetworkFollowingTab> {
                     child: Text(
                       'Followers',
                       style: GoogleFonts.inter(
-                        color: _subTabIndex == 1 ? Colors.black : Colors.white,
+                        color: _subTabIndex == 1 ? Colors.black : AppColors.textPrimary,
                         fontWeight: FontWeight.bold,
                         fontSize: 13,
                       ),
@@ -264,7 +265,7 @@ class _NetworkFollowingTabState extends ConsumerState<NetworkFollowingTab> {
           const SizedBox(height: 12),
           Text(
             title,
-            style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+            style: GoogleFonts.inter(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 16),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 6),
@@ -407,16 +408,11 @@ class _UserNetworkCardState extends ConsumerState<_UserNetworkCard> {
             child: Row(
               children: [
                 // Avatar
-                CircleAvatar(
+                AppAvatar(
+                  avatarUrl: _avatar,
                   radius: 22,
+                  fallbackName: _name,
                   backgroundColor: AppColors.surfaceAlt,
-                  backgroundImage: _avatar.isNotEmpty ? NetworkImage(_avatar) : null,
-                  child: _avatar.isEmpty
-                      ? Text(
-                          _name.isNotEmpty ? _name[0].toUpperCase() : 'U',
-                          style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.bold),
-                        )
-                      : null,
                 ),
                 const SizedBox(width: 12),
 
@@ -431,7 +427,7 @@ class _UserNetworkCardState extends ConsumerState<_UserNetworkCard> {
                           Flexible(
                             child: Text(
                               _name,
-                              style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                              style: GoogleFonts.inter(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 14),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),

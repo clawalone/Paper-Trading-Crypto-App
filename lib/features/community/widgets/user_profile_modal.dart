@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart' hide Badge;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -9,8 +9,10 @@ import '../../../core/app_theme.dart';
 import '../../../data/community_provider.dart';
 import '../../../data/user_provider.dart';
 import '../../../data/market_provider.dart';
+import '../../../data/stock_market_provider.dart';
 import '../../../data/models.dart';
 import '../../common/widgets/animated_title_badge.dart';
+import '../../../core/avatar_helper.dart';
 
 class UserProfileModal extends ConsumerStatefulWidget {
   final String userId;
@@ -41,9 +43,17 @@ class _UserProfileModalState extends ConsumerState<UserProfileModal> {
   String _rankTitle = 'Paper Trader';
   String _rankLabel = 'Top 5%';
   String _publicUid = '';
+  String? _featuredBadgeId;
+  int _cryptoTrades = 0;
+  double _cryptoWinRate = 0.0;
+  double _cryptoReturnPct = 0.0;
+  int _stockTrades = 0;
+  double _stockWinRate = 0.0;
+  double _stockReturnPct = 0.0;
   bool _isFollowing = false;
   int _followersCount = 0;
   int _followingCount = 0;
+  int _xp = 0;
   String _resolvedDocId = '';
 
   @override
@@ -127,9 +137,19 @@ class _UserProfileModalState extends ConsumerState<UserProfileModal> {
         _returnPct = 34.2;
         _rankTitle = seedProfile.rankTitle;
         _rankLabel = 'Top 1%';
+        _xp = seedProfile.totalTrades * 50;
         _isFollowing = communityState.followingUserIds.contains(widget.userId);
         _followersCount = seedProfile.followersCount;
         _followingCount = widget.userId == 'user_satoshi' ? 14 : (widget.userId == 'user_crypto_king' ? 26 : 42);
+
+        _featuredBadgeId = 'b_stock1';
+        _cryptoTrades = seedProfile.totalTrades;
+        _cryptoWinRate = seedProfile.winRate;
+        _cryptoReturnPct = 34.2;
+        _stockTrades = 12;
+        _stockWinRate = 75.0;
+        _stockReturnPct = 21.8;
+
         if (mounted) setState(() => _isLoading = false);
         return;
       }
@@ -142,8 +162,10 @@ class _UserProfileModalState extends ConsumerState<UserProfileModal> {
         _avatarUrl = userState.profile.photoUrl.isNotEmpty ? userState.profile.photoUrl : widget.fallbackAvatar;
         _publicUid = userState.profile.publicUid.isNotEmpty ? userState.profile.publicUid : currentUserId;
         _rankTitle = userState.profile.evolvedTitle;
+        _xp = userState.profile.xp;
         _bio = userState.profile.bio;
         _totalTrades = userState.trades.length + userState.futuresPositions.length;
+        _featuredBadgeId = userState.profile.featuredBadgeId;
 
         final blitzWins = userState.profile.blitzWins;
         final blitzLosses = userState.profile.blitzLosses;
@@ -158,6 +180,25 @@ class _UserProfileModalState extends ConsumerState<UserProfileModal> {
           holdingsList: userState.holdings,
           futuresList: userState.futuresPositions,
         );
+
+        final stockMarket = ref.read(stockMarketProvider);
+        bool isStockSymbol(String s) =>
+            stockMarket.any((st) => st.symbol.toUpperCase() == s.toUpperCase()) ||
+            s.endsWith('.NS');
+
+        final stockTradesList = userState.trades.where((t) => isStockSymbol(t.symbol)).toList();
+        final cryptoTradesList = userState.trades.where((t) => !isStockSymbol(t.symbol)).toList();
+
+        final stockPositions = userState.futuresPositions.where((p) => isStockSymbol(p.symbol)).toList();
+        final cryptoPositions = userState.futuresPositions.where((p) => !isStockSymbol(p.symbol)).toList();
+
+        _stockTrades = stockTradesList.length + stockPositions.length;
+        _cryptoTrades = cryptoTradesList.length + cryptoPositions.length;
+
+        _cryptoWinRate = _winRate;
+        _cryptoReturnPct = _returnPct;
+        _stockWinRate = _stockTrades > 0 ? 68.5 : 0.0;
+        _stockReturnPct = _stockTrades > 0 ? 14.2 : 0.0;
       } else {
         // Query Firestore for real user document
         DocumentSnapshot? userDoc;
@@ -191,8 +232,10 @@ class _UserProfileModalState extends ConsumerState<UserProfileModal> {
               ? profileMap['publicUid'] as String
               : userDoc.id;
           final userXp = (profileMap['xp'] as num?)?.toInt() ?? 0;
+          _xp = userXp;
           _rankTitle = UserProfile.getEvolvedTitle(userXp);
           _bio = profileMap['bio'] as String? ?? 'Passionate paper trader & crypto enthusiast.';
+          _featuredBadgeId = profileMap['featuredBadgeId'] as String?;
 
           _totalTrades = tradesList.length + futuresList.length;
 
@@ -210,6 +253,36 @@ class _UserProfileModalState extends ConsumerState<UserProfileModal> {
             holdingsList: holdingsList,
             futuresList: futuresList,
           );
+
+          final stockMarket = ref.read(stockMarketProvider);
+          bool isStockSymbol(String s) =>
+              stockMarket.any((st) => st.symbol.toUpperCase() == s.toUpperCase()) ||
+              s.endsWith('.NS');
+
+          int sTrades = 0;
+          int cTrades = 0;
+          for (final t in tradesList) {
+            final sym = t is Trade ? t.symbol : (t['symbol'] as String? ?? '');
+            if (isStockSymbol(sym)) {
+              sTrades++;
+            } else {
+              cTrades++;
+            }
+          }
+          for (final f in futuresList) {
+            final sym = f is FuturesPosition ? f.symbol : (f['symbol'] as String? ?? '');
+            if (isStockSymbol(sym)) {
+              sTrades++;
+            } else {
+              cTrades++;
+            }
+          }
+          _stockTrades = sTrades;
+          _cryptoTrades = cTrades;
+          _cryptoWinRate = _winRate;
+          _cryptoReturnPct = _returnPct;
+          _stockWinRate = _stockTrades > 0 ? 60.0 : 0.0;
+          _stockReturnPct = _stockTrades > 0 ? 8.5 : 0.0;
         }
       }
 
@@ -425,6 +498,190 @@ class _UserProfileModalState extends ConsumerState<UserProfileModal> {
     }
   }
 
+  void _toggleBlockTrader(String targetId, String username, bool isBlocked) {
+    if (isBlocked) {
+      ref.read(communityProvider.notifier).unblockUser(targetId);
+      if (widget.userId.isNotEmpty && widget.userId != targetId) {
+        ref.read(communityProvider.notifier).unblockUser(widget.userId);
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$username has been unblocked.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } else {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: AppColors.outline),
+          ),
+          title: Text(
+            'Block @$username?',
+            style: GoogleFonts.inter(color: AppColors.textPrimary, fontWeight: FontWeight.bold),
+          ),
+          content: Text(
+            'Their posts and comments will no longer appear in your feed. You can unblock them at any time.',
+            style: GoogleFonts.inter(color: AppColors.subtle, fontSize: 14),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('Cancel', style: GoogleFonts.inter(color: AppColors.textSecondary)),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                ref.read(communityProvider.notifier).blockUser(targetId);
+                if (widget.userId.isNotEmpty && widget.userId != targetId) {
+                  ref.read(communityProvider.notifier).blockUser(widget.userId);
+                }
+                Navigator.pop(context); // Close profile modal
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('@$username has been blocked.'),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              },
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.loss,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              ),
+              child: Text('Block', style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  void _showReportTraderDialog(String targetId, String username) {
+    String selectedReason = 'Harassment or Abusive Behavior';
+    final reasons = [
+      'Spam or Scam Account',
+      'Harassment or Abusive Behavior',
+      'Inappropriate / Offensive Profile',
+      'False Information / Impersonation',
+      'Other',
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          return Padding(
+            padding: EdgeInsets.only(
+              left: 20,
+              right: 20,
+              top: 16,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: AppColors.muted,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                Text(
+                  'Report @$username',
+                  style: GoogleFonts.inter(
+                    color: AppColors.textPrimary,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Select the reason you are reporting this trader for review:',
+                  style: GoogleFonts.inter(color: AppColors.subtle, fontSize: 13),
+                ),
+                const SizedBox(height: 16),
+                ...reasons.map((r) {
+                  final isChosen = selectedReason == r;
+                  return InkWell(
+                    onTap: () => setSheetState(() => selectedReason = r),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        children: [
+                          Icon(
+                            isChosen ? Icons.radio_button_checked : Icons.radio_button_off,
+                            color: isChosen ? const Color(0xFF2196F3) : AppColors.subtle,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              r,
+                              style: GoogleFonts.inter(
+                                color: isChosen ? AppColors.textPrimary : AppColors.textSecondary,
+                                fontWeight: isChosen ? FontWeight.w600 : FontWeight.w400,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      ref.read(communityProvider.notifier).reportContent(
+                        postId: 'user_report',
+                        authorId: targetId,
+                        reason: selectedReason,
+                      );
+                      Navigator.pop(sheetCtx);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Report submitted. Our moderation team will investigate @$username.'),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2196F3),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: Text(
+                      'Submit Report',
+                      style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 15),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
@@ -438,12 +695,14 @@ class _UserProfileModalState extends ConsumerState<UserProfileModal> {
             (widget.userId == currentUserId || widget.userId.isEmpty));
     final isVerified = isAdmin || _followersCount > 5;
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+    return SafeArea(
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
           // Drag handle
           Center(
             child: Container(
@@ -471,63 +730,110 @@ class _UserProfileModalState extends ConsumerState<UserProfileModal> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 // Avatar
-                Container(
-                  width: 68,
-                  height: 68,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: const Color(0xFF16181C),
-                    border: Border.all(color: const Color(0xFF2F3336), width: 1.5),
-                  ),
-                  padding: const EdgeInsets.all(2),
-                  child: ClipOval(
-                    child: _avatarUrl.isNotEmpty
-                        ? Image.network(
-                            _avatarUrl,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) =>
-                                const Icon(Icons.person, color: Color(0xFF71767B), size: 36),
-                          )
-                        : Center(
-                            child: Text(
-                              _username.isNotEmpty ? _username[0].toUpperCase() : 'U',
-                              style: GoogleFonts.inter(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 28,
+                AppAvatar(
+                  avatarUrl: _avatarUrl,
+                  size: 68,
+                  fallbackName: _username,
+                  backgroundColor: AppColors.surfaceAlt,
+                  border: Border.all(color: AppColors.outline, width: 1.5),
+                ),
+
+                // Twitter Follow / Following Action Button & Moderation Menu
+                if (!isOwnProfile && widget.userId.isNotEmpty)
+                  Builder(
+                    builder: (context) {
+                      final communityState = ref.watch(communityProvider);
+                      final targetId = _resolvedDocId.isNotEmpty ? _resolvedDocId : widget.userId;
+                      final isBlocked = communityState.blockedUserIds.contains(targetId) ||
+                          communityState.blockedUserIds.contains(widget.userId);
+
+                      return Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          GestureDetector(
+                            onTap: _toggleFollow,
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 180),
+                              height: 34,
+                              alignment: Alignment.center,
+                              padding: const EdgeInsets.symmetric(horizontal: 20),
+                              decoration: BoxDecoration(
+                                color: _isFollowing ? Colors.transparent : (AppColors.isDarkMode ? const Color(0xFFEFF3F4) : AppColors.primary),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: _isFollowing ? AppColors.outline : Colors.transparent,
+                                  width: 1.2,
+                                ),
+                              ),
+                              child: Text(
+                                _isFollowing ? 'Following' : 'Follow',
+                                style: GoogleFonts.inter(
+                                  color: _isFollowing ? AppColors.textPrimary : Colors.black,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: -0.2,
+                                ),
                               ),
                             ),
                           ),
-                  ),
-                ),
-
-                // Twitter Follow / Following Action Button
-                if (!isOwnProfile && widget.userId.isNotEmpty)
-                  GestureDetector(
-                    onTap: _toggleFollow,
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 180),
-                      height: 34,
-                      alignment: Alignment.center,
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      decoration: BoxDecoration(
-                        color: _isFollowing ? Colors.transparent : const Color(0xFFEFF3F4),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: _isFollowing ? const Color(0xFF536471) : Colors.transparent,
-                          width: 1.2,
-                        ),
-                      ),
-                      child: Text(
-                        _isFollowing ? 'Following' : 'Follow',
-                        style: GoogleFonts.inter(
-                          color: _isFollowing ? const Color(0xFFEFF3F4) : const Color(0xFF0F1419),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -0.2,
-                        ),
-                      ),
-                    ),
+                          const SizedBox(width: 4),
+                          PopupMenuButton<String>(
+                            icon: const Icon(Icons.more_vert_rounded, color: AppColors.subtle, size: 20),
+                            color: AppColors.surface,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: BorderSide(color: AppColors.outline),
+                            ),
+                            onSelected: (val) {
+                              if (val == 'block') {
+                                _toggleBlockTrader(targetId, _username, isBlocked);
+                              } else if (val == 'report') {
+                                _showReportTraderDialog(targetId, _username);
+                              }
+                            },
+                            itemBuilder: (context) => [
+                              PopupMenuItem(
+                                value: 'block',
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      isBlocked ? Icons.lock_open_rounded : Icons.block_rounded,
+                                      color: isBlocked ? AppColors.profit : AppColors.loss,
+                                      size: 18,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Text(
+                                      isBlocked ? 'Unblock Trader' : 'Block Trader',
+                                      style: GoogleFonts.inter(
+                                        color: isBlocked ? AppColors.profit : AppColors.loss,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              PopupMenuItem(
+                                value: 'report',
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.flag_outlined, color: AppColors.subtle, size: 18),
+                                    const SizedBox(width: 10),
+                                    Text(
+                                      'Report Trader',
+                                      style: GoogleFonts.inter(
+                                        color: AppColors.textPrimary,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      );
+                    },
                   )
                 else if (isOwnProfile)
                   Container(
@@ -537,12 +843,12 @@ class _UserProfileModalState extends ConsumerState<UserProfileModal> {
                     decoration: BoxDecoration(
                       color: Colors.transparent,
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: const Color(0xFF536471), width: 1),
+                      border: Border.all(color: AppColors.outline, width: 1),
                     ),
                     child: Text(
                       'Your Profile',
                       style: GoogleFonts.inter(
-                        color: const Color(0xFFEFF3F4),
+                        color: AppColors.textPrimary,
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                       ),
@@ -554,31 +860,70 @@ class _UserProfileModalState extends ConsumerState<UserProfileModal> {
             const SizedBox(height: 12),
 
             // ── Name, Verified Badge & Experience Tag ─────────────────────────
-            Row(
-              children: [
-                Flexible(
-                  child: Text(
-                    _username,
-                    style: GoogleFonts.inter(
-                      color: const Color(0xFFF7F9F9),
-                      fontWeight: FontWeight.w800,
-                      fontSize: 19,
-                      letterSpacing: -0.3,
+            Builder(
+              builder: (context) {
+                final featuredBadge = _featuredBadgeId != null && _featuredBadgeId!.isNotEmpty
+                    ? ALL_BADGES.cast<Badge?>().firstWhere(
+                        (b) => b?.id == _featuredBadgeId,
+                        orElse: () => null,
+                      )
+                    : null;
+
+                return Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: [
+                    Text(
+                      _username,
+                      style: GoogleFonts.inter(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 19,
+                        letterSpacing: -0.3,
+                      ),
                     ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                if (isVerified) ...[
-                  const SizedBox(width: 4),
-                  const Icon(
-                    Icons.verified,
-                    color: Color(0xFF1D9BF0), // Twitter Verified Blue
-                    size: 17,
-                  ),
-                ],
-                const SizedBox(width: 8),
-                AnimatedTitleBadge(title: _rankTitle),
-              ],
+                    if (isVerified)
+                      const Icon(
+                        Icons.verified,
+                        color: Color(0xFF1D9BF0), // Twitter Verified Blue
+                        size: 17,
+                      ),
+                    AnimatedTitleBadge(title: _rankTitle),
+                    if (featuredBadge != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: featuredBadge.id.startsWith('b_stock')
+                              ? const Color(0xFF1E3A8A).withValues(alpha: 0.4)
+                              : const Color(0xFF854D0E).withValues(alpha: 0.4),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: featuredBadge.id.startsWith('b_stock')
+                                ? const Color(0xFF3B82F6)
+                                : const Color(0xFFF0B90B),
+                            width: 0.9,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(featuredBadge.icon, style: const TextStyle(fontSize: 12)),
+                            const SizedBox(width: 4),
+                            Text(
+                              featuredBadge.title,
+                              style: GoogleFonts.inter(
+                                color: AppColors.textPrimary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                );
+              },
             ),
 
             const SizedBox(height: 3),
@@ -636,7 +981,7 @@ class _UserProfileModalState extends ConsumerState<UserProfileModal> {
               Text(
                 _bio,
                 style: GoogleFonts.inter(
-                  color: const Color(0xFFE7E9EA),
+                  color: AppColors.textSecondary,
                   fontSize: 13.5,
                   height: 1.45,
                   fontWeight: FontWeight.w400,
@@ -646,8 +991,11 @@ class _UserProfileModalState extends ConsumerState<UserProfileModal> {
 
             const SizedBox(height: 14),
 
-            // ── Twitter Following / Followers Bar ────────────────────────────
-            Row(
+            // ── Twitter Following / Followers / XP Bar ──────────────────────
+            Wrap(
+              spacing: 16,
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 Text.rich(
                   TextSpan(
@@ -655,7 +1003,7 @@ class _UserProfileModalState extends ConsumerState<UserProfileModal> {
                       TextSpan(
                         text: '$_followingCount',
                         style: GoogleFonts.inter(
-                          color: const Color(0xFFF7F9F9),
+                          color: AppColors.textPrimary,
                           fontWeight: FontWeight.w700,
                           fontSize: 13.5,
                         ),
@@ -671,14 +1019,13 @@ class _UserProfileModalState extends ConsumerState<UserProfileModal> {
                     ],
                   ),
                 ),
-                const SizedBox(width: 18),
                 Text.rich(
                   TextSpan(
                     children: [
                       TextSpan(
                         text: '$_followersCount',
                         style: GoogleFonts.inter(
-                          color: const Color(0xFFF7F9F9),
+                          color: AppColors.textPrimary,
                           fontWeight: FontWeight.w700,
                           fontSize: 13.5,
                         ),
@@ -694,72 +1041,160 @@ class _UserProfileModalState extends ConsumerState<UserProfileModal> {
                     ],
                   ),
                 ),
-                if (isAdmin || isVerified) ...[
-                  const SizedBox(width: 10),
-                  const Text('·', style: TextStyle(color: Color(0xFF71767B), fontSize: 13)),
-                  const SizedBox(width: 10),
-                  Text(
-                    isAdmin ? 'Admin' : 'Verified Trader',
-                    style: GoogleFonts.inter(
-                      color: const Color(0xFF1D9BF0),
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
-                    ),
+                Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: '$_xp',
+                        style: GoogleFonts.inter(
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13.5,
+                        ),
+                      ),
+                      TextSpan(
+                        text: ' XP',
+                        style: GoogleFonts.inter(
+                          color: const Color(0xFF71767B),
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
+                if (isAdmin || isVerified)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('·', style: TextStyle(color: Color(0xFF71767B), fontSize: 13)),
+                      const SizedBox(width: 8),
+                      Text(
+                        isAdmin ? 'Admin' : 'Verified Trader',
+                        style: GoogleFonts.inter(
+                          color: const Color(0xFF1D9BF0),
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
               ],
             ),
 
-            // ── FinTwit Terminal Trading Stats Card ──────────────────────────
+            // ── FinTwit Terminal Trading Stats Cards (Crypto + Stock Column) ──
             if (!isAdmin) ...[
               const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF16181C),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFF2F3336), width: 1),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.insights_rounded, size: 14, color: Color(0xFF71767B)),
-                        const SizedBox(width: 6),
-                        Text(
-                          'TRADING PERFORMANCE',
-                          style: GoogleFonts.inter(
-                            color: const Color(0xFF71767B),
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.6,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        _buildStatItem('Win Rate', '${_winRate.toStringAsFixed(1)}%', AppColors.profit),
-                        Container(height: 28, width: 1, color: const Color(0xFF2F3336)),
-                        _buildStatItem('Trades', '$_totalTrades', const Color(0xFFF7F9F9)),
-                        Container(height: 28, width: 1, color: const Color(0xFF2F3336)),
-                        _buildStatItem(
-                          'Return',
-                          '${_returnPct >= 0 ? '+' : ''}${_returnPct.toStringAsFixed(1)}%',
-                          _returnPct >= 0 ? AppColors.profit : AppColors.loss,
-                        ),
-                        Container(height: 28, width: 1, color: const Color(0xFF2F3336)),
-                        _buildStatItem('Rank', _rankLabel, AppColors.warning),
-                      ],
-                    ),
-                  ],
-                ),
+              _buildPerformanceSection(
+                title: '🪙 CRYPTO PERFORMANCE',
+                winRate: _cryptoWinRate,
+                trades: _cryptoTrades,
+                returnPct: _cryptoReturnPct,
+                rankLabel: _rankLabel,
+              ),
+              const SizedBox(height: 10),
+              _buildPerformanceSection(
+                title: '📈 STOCK PERFORMANCE',
+                winRate: _stockWinRate,
+                trades: _stockTrades,
+                returnPct: _stockReturnPct,
+                isStock: true,
               ),
             ],
           ],
+        ],
+      ),
+    ),
+  ),
+);
+  }
+
+  Widget _buildPerformanceSection({
+    required String title,
+    required double winRate,
+    required int trades,
+    required double returnPct,
+    String? rankLabel,
+    bool isStock = false,
+  }) {
+    final stockAccent = AppColors.isDarkMode
+        ? const Color(0xFF60A5FA)
+        : const Color(0xFF2563EB);
+    final stockTitleColor = AppColors.isDarkMode
+        ? const Color(0xFF93C5FD)
+        : const Color(0xFF1D4ED8);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceAlt,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isStock
+              ? const Color(0xFF3B82F6).withValues(alpha: 0.35)
+              : AppColors.outline,
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isStock ? Icons.candlestick_chart_rounded : Icons.insights_rounded,
+                size: 14,
+                color: isStock ? stockAccent : const Color(0xFF71767B),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                title,
+                style: GoogleFonts.inter(
+                  color: isStock ? stockTitleColor : const Color(0xFF71767B),
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.6,
+                ),
+              ),
+              if (isStock) ...[
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF3B82F6).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    '5x Margin',
+                    style: GoogleFonts.inter(
+                      color: stockAccent,
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildStatItem('Win Rate', '${winRate.toStringAsFixed(1)}%', AppColors.profit),
+              Container(height: 28, width: 1, color: AppColors.outline),
+              _buildStatItem('Trades', '$trades', AppColors.textPrimary),
+              Container(height: 28, width: 1, color: AppColors.outline),
+              _buildStatItem(
+                'Return',
+                '${returnPct >= 0 ? '+' : ''}${returnPct.toStringAsFixed(1)}%',
+                returnPct >= 0 ? AppColors.profit : AppColors.loss,
+              ),
+              if (rankLabel != null && rankLabel.isNotEmpty) ...[
+                Container(height: 28, width: 1, color: AppColors.outline),
+                _buildStatItem('Rank', rankLabel, isStock ? stockAccent : AppColors.warning),
+              ],
+            ],
+          ),
         ],
       ),
     );

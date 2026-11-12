@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -8,9 +8,13 @@ import '../../core/app_theme.dart';
 import '../../core/currency_formatters.dart';
 import '../../core/coin_icon.dart';
 import '../../data/market_provider.dart';
+import '../../data/stock_market_provider.dart';
+import '../../data/market_mode_provider.dart';
+import '../../data/models.dart';
 import '../../data/user_provider.dart';
 import '../signals/signals_screen.dart';
 import '../stock_detail/stock_detail_screen.dart';
+import '../../core/app_translations.dart';
 
 class MarketScreen extends ConsumerStatefulWidget {
   const MarketScreen({super.key});
@@ -25,20 +29,40 @@ class _MarketScreenState extends ConsumerState<MarketScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final market = ref.watch(marketProvider);
+    final mode = ref.watch(marketModeProvider);
+    final isStockMode = mode == MarketMode.stocks;
+    final market = isStockMode ? ref.watch(stockMarketProvider) : ref.watch(marketProvider);
     final userState = ref.watch(userProvider);
     
     final formatter = AppCurrencyFormatter(userState.profile.preferredCurrency);
 
-    final sectors = ['All', 'Favorites', 'Layer 1', 'Layer 2', 'DeFi', 'Meme', 'AI', 'Gaming'];
+    final sectors = isStockMode
+        ? [
+            'All',
+            'Favorites',
+            'US Tech',
+            'Semiconductors',
+            'Crypto & FinTech',
+            'Finance & Banks',
+            'Consumer',
+            'Energy & Industrial',
+            'Healthcare',
+            'ETFs',
+          ]
+        : ['All', 'Favorites', 'Layer 1', 'Layer 2', 'DeFi', 'Meme', 'AI', 'Gaming'];
+    final effectiveFilter = sectors.contains(_filter) ? _filter : 'All';
     final shownStocks = market.where((s) {
       final q = _query.toLowerCase();
       final matchesSearch = s.symbol.toLowerCase().contains(q) || s.name.toLowerCase().contains(q);
       
       bool matchesFilter = false;
-      if (_filter == 'All') matchesFilter = true;
-      else if (_filter == 'Favorites') matchesFilter = userState.profile.watchlist.contains(s.symbol);
-      else matchesFilter = s.category == _filter;
+      if (effectiveFilter == 'All') {
+        matchesFilter = true;
+      } else if (effectiveFilter == 'Favorites') {
+        matchesFilter = userState.profile.watchlist.contains(s.symbol);
+      } else {
+        matchesFilter = s.category == effectiveFilter;
+      }
       
       return matchesSearch && matchesFilter;
     }).toList();
@@ -51,7 +75,7 @@ class _MarketScreenState extends ConsumerState<MarketScreen> {
             constraints: const BoxConstraints(maxWidth: 1200),
             child: Column(
               children: [
-            // Search Bar & AI Signals Button (Twitter / X Style)
+            // Search Bar & AI Signals Button & Arena Switcher
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
               child: Row(
@@ -60,13 +84,13 @@ class _MarketScreenState extends ConsumerState<MarketScreen> {
                     child: SizedBox(
                       height: 40,
                       child: TextField(
-                        style: const TextStyle(color: Colors.white, fontSize: 13),
+                        style: TextStyle(color: AppColors.textPrimary, fontSize: 13),
                         decoration: InputDecoration(
-                          prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF71767B), size: 19),
-                          hintText: 'Search coin pairs (BTC, ETH...)',
-                          hintStyle: const TextStyle(color: Color(0xFF71767B), fontSize: 13),
+                          prefixIcon: Icon(Icons.search_rounded, color: AppColors.subtle, size: 19),
+                          hintText: isStockMode ? 'Search stocks (AAPL, RELIANCE...)' : 'Search coin pairs (BTC, ETH...)'.tr(),
+                          hintStyle: TextStyle(color: AppColors.subtle, fontSize: 13),
                           filled: true,
-                          fillColor: const Color(0xFF202327),
+                          fillColor: AppColors.surfaceAlt,
                           contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(24),
@@ -74,7 +98,7 @@ class _MarketScreenState extends ConsumerState<MarketScreen> {
                           ),
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(24),
-                            borderSide: const BorderSide(color: Color(0xFF2F3336), width: 0.8),
+                            borderSide: BorderSide(color: AppColors.outline, width: 0.8),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(24),
@@ -97,19 +121,19 @@ class _MarketScreenState extends ConsumerState<MarketScreen> {
                       height: 40,
                       padding: const EdgeInsets.symmetric(horizontal: 14),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF16181C),
+                        color: AppColors.surface,
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: const Color(0xFF2F3336), width: 0.9),
+                        border: Border.all(color: AppColors.outline, width: 0.9),
                       ),
-                      child: const Row(
+                      child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.auto_awesome, color: Color(0xFF1D9BF0), size: 16),
-                          SizedBox(width: 6),
+                          const Icon(Icons.auto_awesome, color: Color(0xFF1D9BF0), size: 16),
+                          const SizedBox(width: 6),
                           Text(
-                            'AI Signals',
+                            'AI Signals'.tr(),
                             style: TextStyle(
-                              color: Colors.white,
+                              color: AppColors.textPrimary,
                               fontWeight: FontWeight.w700,
                               fontSize: 13,
                               letterSpacing: -0.2,
@@ -136,9 +160,9 @@ class _MarketScreenState extends ConsumerState<MarketScreen> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF16181C),
+                    color: AppColors.surface,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFF2F3336), width: 1),
+                    border: Border.all(color: AppColors.outline, width: 1),
                   ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
@@ -147,35 +171,35 @@ class _MarketScreenState extends ConsumerState<MarketScreen> {
                         width: 40,
                         height: 40,
                         decoration: BoxDecoration(
-                          color: const Color(0xFF000000),
+                          color: AppColors.surfaceAlt,
                           shape: BoxShape.circle,
-                          border: Border.all(color: const Color(0xFF2F3336), width: 1),
+                          border: Border.all(color: AppColors.outline, width: 1),
                         ),
                         child: const Center(
                           child: Icon(Icons.auto_awesome, color: Color(0xFF1D9BF0), size: 19),
                         ),
                       ),
                       const SizedBox(width: 12),
-                      const Expanded(
+                      Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              'AI Trade Signals & Advisor',
+                              'AI Trade Signals & Analytics'.tr(),
                               style: TextStyle(
-                                color: Colors.white,
+                                color: AppColors.textPrimary,
                                 fontWeight: FontWeight.w800,
                                 fontSize: 14,
                                 letterSpacing: -0.2,
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
-                            SizedBox(height: 2),
+                            const SizedBox(height: 2),
                             Text(
-                              'Live Buy/Sell signals • Safe Leverage desk',
+                              'Live Buy/Sell signals • Safe Leverage desk'.tr(),
                               style: TextStyle(
-                                color: Color(0xFF71767B),
+                                color: AppColors.textSecondary,
                                 fontSize: 12,
                                 fontWeight: FontWeight.w400,
                               ),
@@ -189,13 +213,14 @@ class _MarketScreenState extends ConsumerState<MarketScreen> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6.5),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFEFF3F4),
+                          color: AppColors.surfaceAlt,
                           borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: AppColors.outline),
                         ),
-                        child: const Text(
-                          'Explore',
+                        child: Text(
+                          'Explore'.tr(),
                           style: TextStyle(
-                            color: Color(0xFF0F141C),
+                            color: AppColors.textPrimary,
                             fontSize: 12,
                             fontWeight: FontWeight.w800,
                             letterSpacing: -0.2,
@@ -225,17 +250,17 @@ class _MarketScreenState extends ConsumerState<MarketScreen> {
                       margin: const EdgeInsets.only(right: 8),
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
-                        color: isSelected ? AppColors.primary : const Color(0xFF16181C),
+                        color: isSelected ? AppColors.primary : AppColors.surfaceAlt,
                         borderRadius: BorderRadius.circular(19),
                         border: Border.all(
-                          color: isSelected ? AppColors.primary : const Color(0xFF2F3336),
+                          color: isSelected ? AppColors.primary : AppColors.outline,
                           width: 0.8,
                         ),
                       ),
                       child: Text(
-                        s,
+                        s.tr(),
                         style: TextStyle(
-                          color: isSelected ? Colors.black : const Color(0xFF71767B),
+                          color: isSelected ? Colors.black : AppColors.subtle,
                           fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                           fontSize: 12,
                         ),
@@ -252,19 +277,19 @@ class _MarketScreenState extends ConsumerState<MarketScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Row(
                 children: [
-                  const SizedBox(
+                  SizedBox(
                     width: 130,
-                    child: Text('Name', style: TextStyle(color: Color(0xFF848E9C), fontSize: 12, fontWeight: FontWeight.w600)),
+                    child: Text('Name'.tr(), style: const TextStyle(color: Color(0xFF848E9C), fontSize: 12, fontWeight: FontWeight.w600)),
                   ),
-                  const Expanded(
+                  Expanded(
                     flex: 2,
-                    child: Text('Chart', style: TextStyle(color: Color(0xFF848E9C), fontSize: 12, fontWeight: FontWeight.w600)),
+                    child: Text('Chart'.tr(), style: const TextStyle(color: Color(0xFF848E9C), fontSize: 12, fontWeight: FontWeight.w600)),
                   ),
                   Expanded(
                     flex: 3,
                     child: Container(
                       alignment: Alignment.centerRight,
-                      child: const Text('Price / 24h %', style: TextStyle(color: Color(0xFF848E9C), fontSize: 12, fontWeight: FontWeight.w600)),
+                      child: Text('Price / 24h %'.tr(), style: const TextStyle(color: Color(0xFF848E9C), fontSize: 12, fontWeight: FontWeight.w600)),
                     ),
                   ),
                 ],
@@ -274,7 +299,7 @@ class _MarketScreenState extends ConsumerState<MarketScreen> {
             // Stock List
             Expanded(
               child: shownStocks.isEmpty
-                  ? const Center(child: Text('No pairs found', style: TextStyle(color: Color(0xFF848E9C))))
+                  ? Center(child: Text('No pairs found'.tr(), style: const TextStyle(color: Color(0xFF848E9C))))
                   : LayoutBuilder(
                       builder: (context, constraints) {
                         if (constraints.maxWidth > 800) {
@@ -335,7 +360,8 @@ class _SpotRow extends StatelessWidget {
     final color = good ? AppColors.profit : AppColors.loss;
     
     // Safety check for empty history to prevent crashes
-    final history = stock.history as List<double>;
+    final rawHistory = stock.history as List<double>;
+    final history = rawHistory.length > 30 ? rawHistory.sublist(rawHistory.length - 30) : rawHistory;
     final hasHistory = history.isNotEmpty;
     
     double minPrice = 0;
@@ -379,9 +405,35 @@ class _SpotRow extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(stock.symbol, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)),
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                stock.symbol,
+                                style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w700, fontSize: 14),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (stock is Stock && stock.isStock) ...[
+                              const SizedBox(width: 4),
+                              Container(
+                                width: 5,
+                                height: 5,
+                                decoration: BoxDecoration(
+                                  color: stock.isMarketOpen ? const Color(0xFF0ECB81) : const Color(0xFFF6465D),
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
                         const SizedBox(height: 2),
-                        Text('Vol ${NumberFormat.compact().format(stock.volume)}', style: const TextStyle(color: Color(0xFF848E9C), fontSize: 11)),
+                        Text(
+                          stock is Stock && stock.isStock ? stock.name : 'Vol ${NumberFormat.compact().format(stock.volume)}',
+                          style: const TextStyle(color: Color(0xFF848E9C), fontSize: 11),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ],
                     ),
                   ),
@@ -407,6 +459,7 @@ class _SpotRow extends StatelessWidget {
                       LineChartBarData(
                         spots: spots,
                         isCurved: true,
+                        curveSmoothness: 0.15,
                         color: color,
                         barWidth: 1.5,
                         isStrokeCapRound: true,
@@ -433,7 +486,9 @@ class _SpotRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    formatter.format(stock.currentPrice),
+                    stock is Stock && stock.isStock
+                        ? '${stock.currency == "INR" ? "₹" : "\$"}${stock.currentPrice.toStringAsFixed(2)}'
+                        : formatter.format(stock.currentPrice),
                     style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 15),
                   ),
                   const SizedBox(height: 4),

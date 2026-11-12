@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_theme.dart';
@@ -6,6 +6,8 @@ import '../../core/currency_formatters.dart';
 import '../../data/market_provider.dart';
 import '../../data/models.dart';
 import '../../data/user_provider.dart';
+import '../../core/rewarded_ad_manager.dart';
+import '../profile/widgets/zero_balance_refill_sheet.dart';
 
 class FuturesTradeSheet extends ConsumerStatefulWidget {
   final Stock stock;
@@ -36,6 +38,13 @@ class _FuturesTradeSheetState extends ConsumerState<FuturesTradeSheet> {
     _leverage = _leverageOptions.contains(widget.initialLeverage)
         ? widget.initialLeverage
         : 1;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final userState = ref.read(userProvider);
+      if (userState.profile.virtualBalance <= 0) {
+        RewardedAdManager.instance.preload();
+      }
+    });
   }
 
   @override
@@ -78,7 +87,7 @@ class _FuturesTradeSheetState extends ConsumerState<FuturesTradeSheet> {
     final formatter = AppCurrencyFormatter(userState.profile.preferredCurrency);
     final currSym = CurrencyFormatters.getSymbol(userState.profile.preferredCurrency);
     final isLong = _side == OrderSide.buy;
-    final canExecute = isMarketOnline && liveStock.isLive && _margin > 0 && _margin <= userState.profile.virtualBalance;
+    final canExecute = isMarketOnline && liveStock.isLive && liveStock.currentPrice > 0 && _margin > 0 && _margin <= userState.profile.virtualBalance;
 
     return Container(
       decoration: BoxDecoration(
@@ -183,8 +192,26 @@ class _FuturesTradeSheetState extends ConsumerState<FuturesTradeSheet> {
             const SizedBox(height: 20),
 
             // Margin input (rupees)
-            Text('Avail: ${formatter.format(userState.profile.virtualBalance)}',
-                style: const TextStyle(color: Colors.white60, fontSize: 12)),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Avail: ${formatter.format(userState.profile.virtualBalance)}',
+                    style: const TextStyle(color: Colors.white60, fontSize: 12)),
+                if (userState.profile.virtualBalance <= 0)
+                  InkWell(
+                    onTap: () => ZeroBalanceRefillSheet.show(context),
+                    borderRadius: BorderRadius.circular(4),
+                    child: const Text(
+                      'Free Refill (Watch Ad)',
+                      style: TextStyle(
+                        color: Color(0xFF00C087),
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
             const SizedBox(height: 8),
             TextField(
               controller: _amountController,
@@ -230,9 +257,9 @@ class _FuturesTradeSheetState extends ConsumerState<FuturesTradeSheet> {
                     value: formatter.format(_liquidationPrice),
                     valueColor: Colors.amber,
                   ),
-                  const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 8),
-                      child: Divider(color: Colors.white10)),
+                  Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Divider(color: AppColors.outline)),
                   _SummaryRow(
                     label: 'Margin (deducted)',
                     value: formatter.format(_margin),
@@ -286,24 +313,46 @@ class _FuturesTradeSheetState extends ConsumerState<FuturesTradeSheet> {
                             backgroundColor: AppColors.profit));
                       }
                     }
-                  : null,
+                  : (_margin > userState.profile.virtualBalance || userState.profile.virtualBalance <= 0
+                      ? () => ZeroBalanceRefillSheet.show(context)
+                      : null),
               style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(56),
                 backgroundColor: (!isMarketOnline || !liveStock.isLive)
                     ? const Color(0xFF2B3139)
-                    : (isLong ? AppColors.profit : AppColors.loss),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    : (canExecute
+                        ? (isLong ? AppColors.profit : AppColors.loss)
+                        : (_margin > userState.profile.virtualBalance || userState.profile.virtualBalance <= 0
+                            ? const Color(0xFF1E2330)
+                            : const Color(0xFF2B3139))),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: (!canExecute && (_margin > userState.profile.virtualBalance || userState.profile.virtualBalance <= 0))
+                      ? const BorderSide(color: Color(0xFF2E374D), width: 1.2)
+                      : BorderSide.none,
+                ),
               ),
               child: Text(
                   (!isMarketOnline || !liveStock.isLive)
                       ? 'Syncing Live Price...'
-                      : '${isLong ? 'Buy / Long' : 'Sell / Short'}  •  ${_leverage}x  •  ${formatter.format(_margin)} margin',
+                      : (canExecute
+                          ? '${isLong ? 'Buy / Long' : 'Sell / Short'}  •  ${_leverage}x  •  ${formatter.format(_margin)} margin'
+                          : (_margin > userState.profile.virtualBalance || userState.profile.virtualBalance <= 0
+                              ? 'Margin Empty — Tap for Free Refill'
+                              : '${isLong ? 'Buy / Long' : 'Sell / Short'}  •  ${_leverage}x  •  ${formatter.format(_margin)} margin')),
                   style: TextStyle(
                       fontWeight: FontWeight.w900,
                       fontSize: 16,
-                      color: (!isMarketOnline || !liveStock.isLive) ? Colors.white38 : Colors.white)),
-            ),
-          ],
+                      color: (!isMarketOnline || !liveStock.isLive)
+                          ? Colors.white38
+                          : (canExecute
+                              ? Colors.white
+                              : (_margin > userState.profile.virtualBalance || userState.profile.virtualBalance <= 0
+                                  ? const Color(0xFF00C087)
+                                  : Colors.white38))),
+                ),
+              ),
+            ],
         ),
       ),
     );

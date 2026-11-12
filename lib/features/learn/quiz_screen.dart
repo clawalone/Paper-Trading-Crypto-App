@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_theme.dart';
@@ -6,7 +6,8 @@ import '../../data/quiz_data.dart';
 import '../../data/user_provider.dart';
 
 class QuizScreen extends ConsumerStatefulWidget {
-  const QuizScreen({super.key});
+  final bool isStock;
+  const QuizScreen({super.key, this.isStock = false});
 
   @override
   ConsumerState<QuizScreen> createState() => _QuizScreenState();
@@ -23,7 +24,7 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
   @override
   void initState() {
     super.initState();
-    _questions = QuizData.getDailyQuestions();
+    _questions = QuizData.getDailyQuestions(widget.isStock);
   }
 
   void _submitAnswer() {

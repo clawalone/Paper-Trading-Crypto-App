@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -118,12 +118,12 @@ class _FeatureRequestScreenState extends ConsumerState<FeatureRequestScreen>
         backgroundColor: AppColors.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: Icon(Icons.arrow_back, color: AppColors.textPrimary),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
+        title: Text(
           'Request a Feature',
-          style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+          style: TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold),
         ),
       ),
       body: FadeTransition(
@@ -142,41 +142,37 @@ class _FeatureRequestScreenState extends ConsumerState<FeatureRequestScreen>
                     width: double.infinity,
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF0A2E2A), Color(0xFF0F1722)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
+                      color: AppColors.surface,
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: AppColors.primary.withOpacity(0.25)),
+                      border: Border.all(color: AppColors.primary.withValues(alpha: 0.25)),
                     ),
                     child: Row(
                       children: [
                         Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: AppColors.primary.withOpacity(0.15),
+                            color: AppColors.primary.withValues(alpha: 0.15),
                             shape: BoxShape.circle,
                           ),
                           child: const Icon(Icons.tips_and_updates_outlined,
                               color: AppColors.primary, size: 28),
                         ),
                         const SizedBox(width: 16),
-                        const Expanded(
+                        Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
                                 'Shape the App',
                                 style: TextStyle(
-                                    color: Colors.white,
+                                    color: AppColors.textPrimary,
                                     fontSize: 17,
                                     fontWeight: FontWeight.w800),
                               ),
-                              SizedBox(height: 4),
+                              const SizedBox(height: 4),
                               Text(
                                 'Tell us what features you\'d love to see and we\'ll prioritise the best ones.',
-                                style: TextStyle(color: Colors.white54, fontSize: 12.5, height: 1.4),
+                                style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5, height: 1.4),
                               ),
                             ],
                           ),
@@ -203,11 +199,11 @@ class _FeatureRequestScreenState extends ConsumerState<FeatureRequestScreen>
                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                           decoration: BoxDecoration(
                             color: isSelected
-                                ? color.withOpacity(0.18)
-                                : const Color(0xFF1E2329),
+                                ? color.withValues(alpha: 0.18)
+                                : AppColors.surfaceAlt,
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
-                              color: isSelected ? color : const Color(0xFF2B3139),
+                              color: isSelected ? color : AppColors.outline,
                               width: isSelected ? 1.5 : 1,
                             ),
                           ),
@@ -215,12 +211,12 @@ class _FeatureRequestScreenState extends ConsumerState<FeatureRequestScreen>
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(icon,
-                                  color: isSelected ? color : const Color(0xFF6B7280), size: 16),
+                                  color: isSelected ? color : AppColors.subtle, size: 16),
                               const SizedBox(width: 6),
                               Text(
-                                label,
+                                label.tr(),
                                 style: TextStyle(
-                                  color: isSelected ? color : Colors.white54,
+                                  color: isSelected ? color : AppColors.textSecondary,
                                   fontWeight:
                                       isSelected ? FontWeight.w700 : FontWeight.w500,
                                   fontSize: 13,
@@ -240,13 +236,13 @@ class _FeatureRequestScreenState extends ConsumerState<FeatureRequestScreen>
                   const SizedBox(height: 10),
                   TextFormField(
                     controller: _titleController,
-                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    style: TextStyle(color: AppColors.textPrimary, fontSize: 14),
                     maxLength: 80,
                     validator: (v) => (v == null || v.trim().isEmpty)
-                        ? 'Please enter a title for your request'
+                        ? 'Please enter a title for your request'.tr()
                         : null,
                     decoration: _inputDec(
-                      hint: 'e.g. "Show P&L in percentage on portfolio"',
+                      hint: 'e.g. "Show P&L in percentage on portfolio"'.tr(),
                       icon: Icons.title_rounded,
                     ),
                   ),
@@ -256,22 +252,22 @@ class _FeatureRequestScreenState extends ConsumerState<FeatureRequestScreen>
                   // ── Description field ──────────────────────────────────────
                   const _SectionLabel(label: 'Description'),
                   const SizedBox(height: 4),
-                  const Text(
-                    'Explain what the feature does and why it would be useful.',
-                    style: TextStyle(color: Colors.white38, fontSize: 12),
+                  Text(
+                    'Explain what the feature does and why it would be useful.'.tr(),
+                    style: TextStyle(color: AppColors.textMuted, fontSize: 12),
                   ),
                   const SizedBox(height: 10),
                   TextFormField(
                     controller: _descController,
-                    style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.5),
+                    style: TextStyle(color: AppColors.textPrimary, fontSize: 14, height: 1.5),
                     maxLines: 6,
                     maxLength: 500,
                     validator: (v) => (v == null || v.trim().isEmpty)
-                        ? 'Please describe the feature'
+                        ? 'Please describe the feature'.tr()
                         : null,
                     decoration: _inputDec(
                       hint:
-                          'Describe the feature in detail. The more context you give, the easier it is for us to build it.',
+                          'Describe the feature in detail. The more context you give, the easier it is for us to build it.'.tr(),
                       icon: Icons.description_outlined,
                     ),
                   ),
@@ -298,14 +294,14 @@ class _FeatureRequestScreenState extends ConsumerState<FeatureRequestScreen>
                               child: CircularProgressIndicator(
                                   strokeWidth: 2.5, color: Colors.black),
                             )
-                          : const Row(
+                          : Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.send_rounded, size: 18),
-                                SizedBox(width: 8),
+                                const Icon(Icons.send_rounded, size: 18),
+                                const SizedBox(width: 8),
                                 Text(
-                                  'Submit Request',
-                                  style: TextStyle(
+                                  'Submit Request'.tr(),
+                                  style: const TextStyle(
                                       fontWeight: FontWeight.w800, fontSize: 16),
                                 ),
                               ],
@@ -324,19 +320,19 @@ class _FeatureRequestScreenState extends ConsumerState<FeatureRequestScreen>
 
   InputDecoration _inputDec({required String hint, required IconData icon}) {
     return InputDecoration(
-      hintText: hint,
-      hintStyle: const TextStyle(color: Color(0xFF4B5563), fontSize: 13),
-      prefixIcon: Icon(icon, color: const Color(0xFF6B7280), size: 20),
+      hintText: hint.tr(),
+      hintStyle: TextStyle(color: AppColors.textMuted, fontSize: 13),
+      prefixIcon: Icon(icon, color: AppColors.subtle, size: 20),
       filled: true,
-      fillColor: const Color(0xFF141A21),
-      counterStyle: const TextStyle(color: Color(0xFF4B5563), fontSize: 11),
+      fillColor: AppColors.surfaceAlt,
+      counterStyle: TextStyle(color: AppColors.textMuted, fontSize: 11),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: Color(0xFF2B3139)),
+        borderSide: BorderSide(color: AppColors.outline),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: Color(0xFF2B3139)),
+        borderSide: BorderSide(color: AppColors.outline),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
@@ -362,9 +358,9 @@ class _SectionLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Text(
-      label,
-      style: const TextStyle(
-        color: Colors.white,
+      label.tr(),
+      style: TextStyle(
+        color: AppColors.textPrimary,
         fontSize: 14,
         fontWeight: FontWeight.w700,
         letterSpacing: 0.3,

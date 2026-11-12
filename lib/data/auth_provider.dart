@@ -49,8 +49,22 @@ class AuthController {
     await FirebaseAuth.instance.signInWithCredential(credential);
   }
 
+  static Future<void> signInAnonymously() async {
+    if (Firebase.apps.isEmpty) throw Exception('Firebase is not configured. Please run `flutterfire configure`.');
+    await FirebaseAuth.instance.signInAnonymously();
+  }
+
+  static Future<void> resetPassword(String email) async {
+    if (Firebase.apps.isEmpty) throw Exception('Firebase is not configured. Please run `flutterfire configure`.');
+    if (email.trim().isEmpty) throw Exception('Please enter your email address to reset password.');
+    await FirebaseAuth.instance.sendPasswordResetEmail(email: email.trim());
+  }
+
   static Future<void> signOut() async {
     if (Firebase.apps.isEmpty) return;
+    try {
+      await GoogleSignIn().signOut();
+    } catch (_) {}
     await FirebaseAuth.instance.signOut();
   }
 }

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../features/profile/request_money_screen.dart';
@@ -74,10 +74,10 @@ class TopUpOfferManager {
           child: Container(
             constraints: const BoxConstraints(maxWidth: 360),
             decoration: BoxDecoration(
-              color: const Color(0xFF16181D),
+              color: AppColors.surface,
               borderRadius: BorderRadius.circular(22),
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.1),
+                color: AppColors.outline,
                 width: 1,
               ),
             ),
@@ -92,10 +92,10 @@ class TopUpOfferManager {
                     width: 50,
                     height: 50,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF22262E),
+                      color: AppColors.surfaceAlt,
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.08),
+                        color: AppColors.outline,
                         width: 1,
                       ),
                     ),
@@ -133,8 +133,8 @@ class TopUpOfferManager {
                   // Heading
                   Text(
                     title.replaceAll('🔥', '').replaceAll('🚀', '').trim(),
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: AppColors.textPrimary,
                       fontWeight: FontWeight.w700,
                       fontSize: 19,
                       letterSpacing: -0.3,
@@ -146,8 +146,8 @@ class TopUpOfferManager {
                   // Description
                   Text(
                     message,
-                    style: const TextStyle(
-                      color: Color(0xFF8E95A2),
+                    style: TextStyle(
+                      color: AppColors.subtle,
                       fontSize: 13,
                       height: 1.45,
                     ),
@@ -159,8 +159,9 @@ class TopUpOfferManager {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1C1F26),
+                      color: AppColors.surfaceAlt,
                       borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.outline),
                     ),
                     child: Column(
                       children: [
@@ -168,9 +169,9 @@ class TopUpOfferManager {
                           icon: Icons.shield_outlined,
                           title: '100% Risk-Free Simulation',
                         ),
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 8),
-                          child: Divider(color: Color(0xFF2A2E38), height: 1),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Divider(color: AppColors.outline, height: 1),
                         ),
                         _buildSummaryRow(
                           icon: Icons.flash_on_outlined,
@@ -223,17 +224,17 @@ class TopUpOfferManager {
                         Navigator.pop(dialogContext);
                       },
                       style: TextButton.styleFrom(
-                        foregroundColor: const Color(0xFF8E95A2),
+                        foregroundColor: AppColors.subtle,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      child: const Text(
+                      child: Text(
                         'Not now',
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w500,
-                          color: Color(0xFF8E95A2),
+                          color: AppColors.subtle,
                         ),
                       ),
                     ),
@@ -256,14 +257,14 @@ class TopUpOfferManager {
         Icon(
           icon,
           size: 16,
-          color: const Color(0xFF8E95A2),
+          color: AppColors.subtle,
         ),
         const SizedBox(width: 10),
         Expanded(
           child: Text(
             title,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: AppColors.textPrimary,
               fontSize: 12.5,
               fontWeight: FontWeight.w500,
             ),

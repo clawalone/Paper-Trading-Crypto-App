@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:math';
-import 'package:flutter/material.dart';
+import '../../core/app_material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_theme.dart';
@@ -315,7 +315,7 @@ class _BlitzDuelScreenState extends ConsumerState<BlitzDuelScreen> with TickerPr
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF141A21),
+        backgroundColor: AppColors.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(24),
           side: BorderSide(color: won ? AppColors.profit : AppColors.loss, width: 2),
@@ -347,16 +347,16 @@ class _BlitzDuelScreenState extends ConsumerState<BlitzDuelScreen> with TickerPr
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: AppColors.background,
+                color: AppColors.surfaceAlt,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.white10),
+                border: Border.all(color: AppColors.outline),
               ),
               child: Row(
                 children: [
                   Expanded(
                     child: Column(
                       children: [
-                        const Text('YOU', style: TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.bold)),
+                        Text('YOU', style: TextStyle(color: AppColors.textSecondary, fontSize: 11, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 4),
                         Text(
                           '${_playerRoi >= 0 ? '+' : ''}${_playerRoi.toStringAsFixed(2)}%',
@@ -365,11 +365,11 @@ class _BlitzDuelScreenState extends ConsumerState<BlitzDuelScreen> with TickerPr
                       ],
                     ),
                   ),
-                  Container(height: 30, width: 1, color: Colors.white10),
+                  Container(height: 30, width: 1, color: AppColors.outline),
                   Expanded(
                     child: Column(
                       children: [
-                        Text(_opponentName, style: const TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
+                        Text(_opponentName, style: TextStyle(color: AppColors.textSecondary, fontSize: 11, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
                         const SizedBox(height: 4),
                         Text(
                           '${_botRoi >= 0 ? '+' : ''}${_botRoi.toStringAsFixed(2)}%',
@@ -436,12 +436,13 @@ class _BlitzDuelScreenState extends ConsumerState<BlitzDuelScreen> with TickerPr
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
+        color: AppColors.surfaceAlt,
         borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: AppColors.outline),
       ),
       child: Text(
         '$label: $value',
-        style: const TextStyle(color: Colors.white54, fontSize: 9, fontWeight: FontWeight.w600),
+        style: TextStyle(color: AppColors.textSecondary, fontSize: 9, fontWeight: FontWeight.w600),
       ),
     );
   }
@@ -522,7 +523,7 @@ class _BlitzDuelScreenState extends ConsumerState<BlitzDuelScreen> with TickerPr
           backgroundColor: AppColors.background,
           elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            icon: Icon(Icons.arrow_back, color: AppColors.textPrimary),
             onPressed: () => _endBattle(isSurrender: true),
           ),
           title: Row(
@@ -546,16 +547,21 @@ class _BlitzDuelScreenState extends ConsumerState<BlitzDuelScreen> with TickerPr
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: isWarningTime ? Colors.redAccent : const Color(0xFF2B3139),
+                  color: isWarningTime ? Colors.redAccent : AppColors.surfaceAlt,
                   borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: isWarningTime ? Colors.transparent : AppColors.outline),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.timer_outlined, color: Colors.white, size: 14),
+                    Icon(Icons.timer_outlined, color: isWarningTime ? Colors.white : AppColors.textPrimary, size: 14),
                     const SizedBox(width: 4),
                     Text(
                       '$minutes:$seconds',
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13),
+                      style: TextStyle(
+                        color: isWarningTime ? Colors.white : AppColors.textPrimary,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 13,
+                      ),
                     ),
                   ],
                 ),
@@ -569,7 +575,7 @@ class _BlitzDuelScreenState extends ConsumerState<BlitzDuelScreen> with TickerPr
               // ── DUAL SCOREBOARD HEADER WITH NET WORTH & TRADE STATUS ─────────
               Container(
                 padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-                color: const Color(0xFF141A21),
+                color: AppColors.surface,
                 child: Column(
                   children: [
                     Row(
@@ -581,7 +587,7 @@ class _BlitzDuelScreenState extends ConsumerState<BlitzDuelScreen> with TickerPr
                             children: [
                               Row(
                                 children: [
-                                  const Text('YOU', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 12)),
+                                  Text('YOU', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w900, fontSize: 12)),
                                   const SizedBox(width: 6),
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
@@ -622,7 +628,7 @@ class _BlitzDuelScreenState extends ConsumerState<BlitzDuelScreen> with TickerPr
                                   const SizedBox(width: 6),
                                   Text(
                                     formatter.format(_playerTotalWorth),
-                                    style: const TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.bold),
+                                    style: TextStyle(color: AppColors.subtle, fontSize: 11, fontWeight: FontWeight.bold),
                                   ),
                                 ],
                               ),
@@ -641,7 +647,7 @@ class _BlitzDuelScreenState extends ConsumerState<BlitzDuelScreen> with TickerPr
                                   Text(_opponentAvatar, style: const TextStyle(fontSize: 13)),
                                   const SizedBox(width: 4),
                                   Flexible(
-                                    child: Text('$_opponentName ($_opponentRating)', style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w700, fontSize: 12), overflow: TextOverflow.ellipsis),
+                                    child: Text('$_opponentName ($_opponentRating)', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w700, fontSize: 12), overflow: TextOverflow.ellipsis),
                                   ),
                                 ],
                               ),
@@ -653,7 +659,7 @@ class _BlitzDuelScreenState extends ConsumerState<BlitzDuelScreen> with TickerPr
                                 children: [
                                   Text(
                                     formatter.format(_botTotalWorth),
-                                    style: const TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.bold),
+                                    style: TextStyle(color: AppColors.subtle, fontSize: 11, fontWeight: FontWeight.bold),
                                   ),
                                   const SizedBox(width: 6),
                                   Text(
@@ -704,9 +710,9 @@ class _BlitzDuelScreenState extends ConsumerState<BlitzDuelScreen> with TickerPr
                                 margin: const EdgeInsets.only(right: 6),
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                                 decoration: BoxDecoration(
-                                  color: isActive ? AppColors.primary.withValues(alpha: 0.2) : const Color(0xFF1E2329),
+                                  color: isActive ? AppColors.primary.withValues(alpha: 0.2) : AppColors.surfaceAlt,
                                   borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(color: isActive ? AppColors.primary : Colors.transparent),
+                                  border: Border.all(color: isActive ? AppColors.primary : AppColors.outline),
                                 ),
                                 child: Row(
                                   children: [
@@ -715,7 +721,7 @@ class _BlitzDuelScreenState extends ConsumerState<BlitzDuelScreen> with TickerPr
                                     Text(
                                       sym,
                                       style: TextStyle(
-                                        color: isActive ? AppColors.primary : Colors.white60,
+                                        color: isActive ? AppColors.primary : AppColors.textSecondary,
                                         fontWeight: FontWeight.w800,
                                         fontSize: 12,
                                       ),
@@ -733,7 +739,7 @@ class _BlitzDuelScreenState extends ConsumerState<BlitzDuelScreen> with TickerPr
                           children: [
                             Text(
                               formatter.format(activePrice),
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 15),
+                              style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w900, fontSize: 15),
                             ),
                             if (activeStock != null)
                               Text(
@@ -777,9 +783,9 @@ class _BlitzDuelScreenState extends ConsumerState<BlitzDuelScreen> with TickerPr
                   child: Container(
                     width: double.infinity,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF141A21),
+                      color: AppColors.surface,
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.white10),
+                      border: Border.all(color: AppColors.outline),
                     ),
                     child: Column(
                       children: [
@@ -799,9 +805,9 @@ class _BlitzDuelScreenState extends ConsumerState<BlitzDuelScreen> with TickerPr
                                   ),
                                   child: Row(
                                     children: [
-                                      Icon(Icons.show_chart, size: 13, color: !_showLogView ? AppColors.primary : Colors.white54),
+                                      Icon(Icons.show_chart, size: 13, color: !_showLogView ? AppColors.primary : AppColors.subtle),
                                       const SizedBox(width: 4),
-                                      Text('Price Chart', style: TextStyle(color: !_showLogView ? AppColors.primary : Colors.white54, fontSize: 11, fontWeight: FontWeight.bold)),
+                                      Text('Price Chart', style: TextStyle(color: !_showLogView ? AppColors.primary : AppColors.subtle, fontSize: 11, fontWeight: FontWeight.bold)),
                                     ],
                                   ),
                                 ),
@@ -818,9 +824,9 @@ class _BlitzDuelScreenState extends ConsumerState<BlitzDuelScreen> with TickerPr
                                   ),
                                   child: Row(
                                     children: [
-                                      Icon(Icons.receipt_long, size: 13, color: _showLogView ? AppColors.primary : Colors.white54),
+                                      Icon(Icons.receipt_long, size: 13, color: _showLogView ? AppColors.primary : AppColors.subtle),
                                       const SizedBox(width: 4),
-                                      Text('Match Feed (${_matchLogs.length})', style: TextStyle(color: _showLogView ? AppColors.primary : Colors.white54, fontSize: 11, fontWeight: FontWeight.bold)),
+                                      Text('Match Feed (${_matchLogs.length})', style: TextStyle(color: _showLogView ? AppColors.primary : AppColors.subtle, fontSize: 11, fontWeight: FontWeight.bold)),
                                     ],
                                   ),
                                 ),
@@ -840,7 +846,7 @@ class _BlitzDuelScreenState extends ConsumerState<BlitzDuelScreen> with TickerPr
                             ],
                           ),
                         ),
-                        const Divider(height: 1, color: Colors.white10),
+                        Divider(height: 1, color: AppColors.outline),
                         Expanded(
                           child: _showLogView
                               ? ListView.separated(
@@ -851,8 +857,8 @@ class _BlitzDuelScreenState extends ConsumerState<BlitzDuelScreen> with TickerPr
                                     final log = _matchLogs[_matchLogs.length - 1 - idx];
                                     return Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                      decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(6)),
-                                      child: Text(log, style: const TextStyle(color: Colors.white70, fontSize: 11, fontFamily: 'monospace')),
+                                      decoration: BoxDecoration(color: AppColors.surfaceAlt, borderRadius: BorderRadius.circular(6)),
+                                      child: Text(log, style: TextStyle(color: AppColors.textPrimary, fontSize: 11, fontFamily: 'monospace')),
                                     );
                                   },
                                 )
@@ -882,12 +888,12 @@ class _BlitzDuelScreenState extends ConsumerState<BlitzDuelScreen> with TickerPr
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
                     color: _playerSide == null
-                        ? Colors.white.withValues(alpha: 0.04)
+                        ? AppColors.surfaceAlt
                         : (_playerSide == OrderSide.buy ? AppColors.profit : AppColors.loss).withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                       color: _playerSide == null
-                          ? Colors.white10
+                          ? AppColors.outline
                           : (_playerSide == OrderSide.buy ? AppColors.profit : AppColors.loss).withValues(alpha: 0.4),
                     ),
                   ),
@@ -903,7 +909,7 @@ class _BlitzDuelScreenState extends ConsumerState<BlitzDuelScreen> with TickerPr
                                   : '$_playerPositionSymbol ${_playerSide == OrderSide.buy ? "LONG 10x" : "SHORT 10x"} @ ${formatter.format(_playerEntryPrice)}',
                               style: TextStyle(
                                 color: _playerSide == null
-                                    ? (_playerTradeCount == 0 ? Colors.amberAccent : Colors.white54)
+                                    ? (_playerTradeCount == 0 ? Colors.amberAccent : AppColors.subtle)
                                     : (_playerSide == OrderSide.buy ? AppColors.profit : AppColors.loss),
                                 fontWeight: FontWeight.w900,
                                 fontSize: 11,
@@ -960,9 +966,9 @@ class _BlitzDuelScreenState extends ConsumerState<BlitzDuelScreen> with TickerPr
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                 child: Row(
                   children: [
-                    Text('CAPITAL: ${formatter.format(_playerCash)}', style: const TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold)),
+                    Text('CAPITAL: ${formatter.format(_playerCash)}', style: TextStyle(color: AppColors.textSecondary, fontSize: 10, fontWeight: FontWeight.bold)),
                     const Spacer(),
-                    const Text('SIZE:', style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold)),
+                    Text('SIZE:', style: TextStyle(color: AppColors.subtle, fontSize: 10, fontWeight: FontWeight.bold)),
                     const SizedBox(width: 6),
                     ...[0.25, 0.50, 0.75, 1.0].map((pct) {
                       final isSel = _selectedAllocPct == pct;
@@ -972,13 +978,13 @@ class _BlitzDuelScreenState extends ConsumerState<BlitzDuelScreen> with TickerPr
                           margin: const EdgeInsets.only(left: 4),
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
-                            color: isSel ? const Color(0xFF2B3139) : Colors.transparent,
+                            color: isSel ? AppColors.surfaceAlt : Colors.transparent,
                             borderRadius: BorderRadius.circular(4),
-                            border: Border.all(color: isSel ? AppColors.primary : Colors.white10),
+                            border: Border.all(color: isSel ? AppColors.primary : AppColors.outline),
                           ),
                           child: Text(
                             '${(pct * 100).toInt()}%',
-                            style: TextStyle(color: isSel ? AppColors.primary : Colors.white54, fontSize: 10, fontWeight: FontWeight.bold),
+                            style: TextStyle(color: isSel ? AppColors.primary : AppColors.subtle, fontSize: 10, fontWeight: FontWeight.bold),
                           ),
                         ),
                       );
@@ -1005,7 +1011,7 @@ class _BlitzDuelScreenState extends ConsumerState<BlitzDuelScreen> with TickerPr
                         child: Column(
                           children: [
                             const Text('SHORT (SELL)', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14)),
-                            Text('Margin ${formatter.format(_playerCash * _selectedAllocPct)} • 10x', style: const TextStyle(fontSize: 9, color: Colors.white54)),
+                            Text('Margin ${formatter.format(_playerCash * _selectedAllocPct)} • 10x', style: TextStyle(fontSize: 9, color: AppColors.subtle)),
                           ],
                         ),
                       ),
@@ -1068,11 +1074,11 @@ class _ProAreaChartPainter extends CustomPainter {
 
     // Horizontal background grid lines & Y-axis price labels
     final gridPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.05)
+      ..color = AppColors.outline.withValues(alpha: 0.5)
       ..strokeWidth = 1.0;
 
-    const textStyle = TextStyle(
-      color: Colors.white38,
+    final textStyle = TextStyle(
+      color: AppColors.subtle,
       fontSize: 9,
       fontWeight: FontWeight.w600,
     );

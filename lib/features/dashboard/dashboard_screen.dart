@@ -1,15 +1,19 @@
 import 'dart:async';
 import 'dart:math';
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../core/app_theme.dart';
+import '../../core/avatar_helper.dart';
 import '../../core/coin_icon.dart';
 import '../../core/currency_formatters.dart';
 import '../../core/update_manager.dart';
 import '../../data/market_provider.dart';
+import '../../data/stock_market_provider.dart';
+import '../../data/market_mode_provider.dart';
+import '../../core/widgets/arena_switcher.dart';
 import '../../data/models.dart';
 import '../../data/user_provider.dart';
 import '../futures/futures_pro_screen.dart';
@@ -19,27 +23,43 @@ import '../rewards/rewards_screen.dart';
 import '../blitz/blitz_duel_screen.dart';
 import '../tournaments/tournament_screen.dart';
 import '../profile/request_money_screen.dart';
+import '../profile/widgets/zero_balance_refill_sheet.dart';
 import '../signals/signals_screen.dart';
 import '../../core/topup_offer_manager.dart';
 import '../../core/championship_prize_manager.dart';
 import '../../core/daily_checkin_manager.dart';
+import '../../core/app_lock_manager.dart';
 import '../../data/notification_provider.dart';
 import '../notifications/notification_screen.dart';
+import '../../core/widgets/animated_username_text.dart';
+import '../../core/prestige_celebration_manager.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final userState = ref.watch(userProvider);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       InAppUpdateManager.checkForUpdates(context);
       TopUpOfferManager.checkAndShowOffer(context);
       ChampionshipPrizeManager.checkAndShowClaimDialog(context, ref);
       DailyCheckInManager.checkAndShowDailyDialog(context, ref);
+      AppLockManager.checkAndPromptSetup(context);
+      PrestigeCelebrationManager.checkAndShowCelebration(
+          context, userState.profile, ref);
+      if (userState.profile.virtualBalance <= 0) {
+        ZeroBalanceRefillSheet.checkAndPromptIfZero(
+            context, userState.profile.virtualBalance);
+      }
     });
+    final marketMode = ref.watch(marketModeProvider);
+    final isStockMode = marketMode == MarketMode.stocks;
+    final cryptoMarket = ref.watch(marketProvider);
+    final stockMarket = ref.watch(stockMarketProvider);
+    final stockIndices = ref.watch(stockIndicesProvider);
+    final market = isStockMode ? stockMarket : cryptoMarket;
 
-    final userState = ref.watch(userProvider);
-    final market = ref.watch(marketProvider);
     final notifState = ref.watch(notificationProvider);
     final unreadNotifs = notifState.unreadCount;
     final formatter = AppCurrencyFormatter(userState.profile.preferredCurrency);
@@ -47,35 +67,35 @@ class DashboardScreen extends ConsumerWidget {
     final isMarketLoading = market.isEmpty || market.first.currentPrice == 0;
     final isAppLoading = userState.isLoading || isMarketLoading;
 
-    final marketMap = {for (final s in market) s.symbol: s};
+    final cryptoMap = {for (final s in cryptoMarket) s.symbol: s};
+    final stockMap = {for (final s in stockMarket) s.symbol: s};
 
     double portfolioValue = 0;
     double investedValue = 0;
-    if (!isMarketLoading) {
-      for (final h in userState.holdings) {
-        final s = marketMap[h.symbol];
-        if (s != null) {
-          portfolioValue += s.currentPrice * h.quantity;
-          investedValue += h.averagePrice * h.quantity;
-        }
+    for (final h in userState.holdings) {
+      final s = stockMap[h.symbol] ?? cryptoMap[h.symbol];
+      if (s != null) {
+        final priceUsd = s.currency == 'INR' ? (s.currentPrice / 85.0) : s.currentPrice;
+        final avgUsd = s.currency == 'INR' ? (h.averagePrice / 85.0) : h.averagePrice;
+        portfolioValue += priceUsd * h.quantity;
+        investedValue += avgUsd * h.quantity;
       }
     }
 
     double futuresPnl = 0;
     double futuresInvested = 0;
     double futuresValue = 0;
-    if (!isMarketLoading) {
-      for (final pos in userState.futuresPositions) {
-        final s = marketMap[pos.symbol];
-        if (s != null) {
-          final isLong = pos.side == OrderSide.buy;
-          final diff = s.currentPrice - pos.entryPrice;
-          final pnl = isLong ? diff * pos.quantity : -diff * pos.quantity;
-          futuresPnl += pnl;
-          futuresInvested += (pos.quantity * pos.entryPrice);
-          final currentValue = pos.margin + pnl;
-          futuresValue += currentValue > 0 ? currentValue : 0;
-        }
+    for (final pos in userState.futuresPositions) {
+      final s = stockMap[pos.symbol] ?? cryptoMap[pos.symbol];
+      if (s != null) {
+        final priceUsd = s.currency == 'INR' ? (s.currentPrice / 85.0) : s.currentPrice;
+        final isLong = pos.side == OrderSide.buy;
+        final diff = priceUsd - pos.entryPrice;
+        final pnl = isLong ? diff * pos.quantity : -diff * pos.quantity;
+        futuresPnl += pnl;
+        futuresInvested += (pos.quantity * pos.entryPrice);
+        final currentValue = pos.margin + pnl;
+        futuresValue += currentValue > 0 ? currentValue : 0;
       }
     }
 
@@ -106,45 +126,34 @@ class DashboardScreen extends ConsumerWidget {
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
                 child: Row(
                 children: [
-                  GestureDetector(
-                    onTap: () => Navigator.push(context,
-                        MaterialPageRoute(builder: (_) => const ProfileScreen())),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 32,
-                          height: 32,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFF1E2329),
-                            shape: BoxShape.circle,
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          AppAvatar(
+                            avatarUrl: userState.profile.photoUrl,
+                            size: 32,
+                            fallbackName: userState.profile.name,
                           ),
-                          child: userState.profile.photoUrl.isNotEmpty
-                              ? ClipOval(child: Image.network(userState.profile.photoUrl, fit: BoxFit.cover))
-                              : Center(
-                                  child: Text(
-                                    userState.profile.name.isNotEmpty
-                                        ? userState.profile.name[0].toUpperCase()
-                                        : 'U',
-                                    style: const TextStyle(
-                                      color: AppColors.primary,
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          userState.profile.name.split(' ').first,
-                          style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white),
-                        ),
-                      ],
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: AnimatedUsernameText(
+                              name: userState.profile.name,
+                              level: userState.profile.level,
+                              fontSize: 14.0,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                  const Spacer(),
+                  const SizedBox(width: 8),
                   GestureDetector(
                     onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RequestMoneyScreen())),
                     child: Container(
@@ -153,14 +162,14 @@ class DashboardScreen extends ConsumerWidget {
                         color: AppColors.primary,
                         borderRadius: BorderRadius.circular(16),
                       ),
-                      child: const Row(
+                      child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.credit_card_rounded, color: Colors.black, size: 14),
-                          SizedBox(width: 4),
+                          const Icon(Icons.credit_card_rounded, color: Colors.black, size: 14),
+                          const SizedBox(width: 4),
                           Text(
-                            'Top-Up',
-                            style: TextStyle(
+                            'Top-Up'.tr(),
+                            style: const TextStyle(
                               color: Colors.black,
                               fontSize: 11,
                               fontWeight: FontWeight.w800,
@@ -219,9 +228,9 @@ class DashboardScreen extends ConsumerWidget {
                       child: Stack(
                         clipBehavior: Clip.none,
                         children: [
-                          const Icon(
+                          Icon(
                             Icons.notifications_none_rounded,
-                            color: Colors.white,
+                            color: AppColors.textPrimary,
                             size: 26,
                           ),
                           if (unreadNotifs > 0)
@@ -268,18 +277,18 @@ class DashboardScreen extends ConsumerWidget {
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF16181C),
+                              color: AppColors.surface,
                               borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: const Color(0xFF2F3336), width: 1),
+                              border: Border.all(color: AppColors.outline, width: 1),
                             ),
                             child: Row(
                               children: [
                                 Container(
                                   padding: const EdgeInsets.all(8),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF000000),
+                                    color: AppColors.surfaceAlt,
                                     shape: BoxShape.circle,
-                                    border: Border.all(color: const Color(0xFF2F3336), width: 1),
+                                    border: Border.all(color: AppColors.outline, width: 1),
                                   ),
                                   child: const Icon(Icons.flash_on, color: AppColors.primary, size: 18),
                                 ),
@@ -289,21 +298,21 @@ class DashboardScreen extends ConsumerWidget {
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
-                                      const Text(
-                                        '1v1 Blitz Arena',
-                                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13, letterSpacing: -0.2),
+                                      Text(
+                                        '1v1 Blitz Arena'.tr(),
+                                        style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800, fontSize: 13, letterSpacing: -0.2),
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                       const SizedBox(height: 2),
                                       Text(
                                         '${userState.profile.blitzRating} ELO • 3m Duel',
-                                        style: const TextStyle(color: Color(0xFF71767B), fontSize: 11),
+                                        style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                     ],
                                   ),
                                 ),
-                                const Icon(Icons.arrow_forward_ios_rounded, color: Color(0xFF71767B), size: 12),
+                                Icon(Icons.arrow_forward_ios_rounded, color: AppColors.subtle, size: 12),
                               ],
                             ),
                           ),
@@ -319,42 +328,42 @@ class DashboardScreen extends ConsumerWidget {
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF16181C),
+                              color: AppColors.surface,
                               borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: const Color(0xFF2F3336), width: 1),
+                              border: Border.all(color: AppColors.outline, width: 1),
                             ),
                             child: Row(
                               children: [
                                 Container(
                                   padding: const EdgeInsets.all(8),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF000000),
+                                    color: AppColors.surfaceAlt,
                                     shape: BoxShape.circle,
-                                    border: Border.all(color: const Color(0xFF2F3336), width: 1),
+                                    border: Border.all(color: AppColors.outline, width: 1),
                                   ),
                                   child: const Icon(Icons.emoji_events, color: Color(0xFFF3BA2F), size: 18),
                                 ),
                                 const SizedBox(width: 10),
-                                const Expanded(
+                                Expanded(
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
                                       Text(
                                         'Weekly Cup',
-                                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13, letterSpacing: -0.2),
+                                        style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800, fontSize: 13, letterSpacing: -0.2),
                                         overflow: TextOverflow.ellipsis,
                                       ),
-                                      SizedBox(height: 2),
+                                      const SizedBox(height: 2),
                                       Text(
                                         'Season #3 • 0.0% Base',
-                                        style: TextStyle(color: Color(0xFF71767B), fontSize: 11),
+                                        style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                     ],
                                   ),
                                 ),
-                                const Icon(Icons.arrow_forward_ios_rounded, color: Color(0xFF71767B), size: 12),
+                                Icon(Icons.arrow_forward_ios_rounded, color: AppColors.subtle, size: 12),
                               ],
                             ),
                           ),
@@ -373,9 +382,9 @@ class DashboardScreen extends ConsumerWidget {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF16181C),
+                        color: AppColors.surface,
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: const Color(0xFF2F3336), width: 1),
+                        border: Border.all(color: AppColors.outline, width: 1),
                       ),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.center,
@@ -384,35 +393,35 @@ class DashboardScreen extends ConsumerWidget {
                             width: 40,
                             height: 40,
                             decoration: BoxDecoration(
-                              color: const Color(0xFF000000),
+                              color: AppColors.surfaceAlt,
                               shape: BoxShape.circle,
-                              border: Border.all(color: const Color(0xFF2F3336), width: 1),
+                              border: Border.all(color: AppColors.outline, width: 1),
                             ),
                             child: const Center(
                               child: Icon(Icons.auto_awesome, color: Color(0xFF1D9BF0), size: 19),
                             ),
                           ),
                           const SizedBox(width: 12),
-                          const Expanded(
+                          Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Text(
-                                  'AI Trade Signals & Advisor',
+                                  'AI Trade Signals & Analytics'.tr(),
                                   style: TextStyle(
-                                    color: Colors.white,
+                                    color: AppColors.textPrimary,
                                     fontWeight: FontWeight.w800,
                                     fontSize: 14,
                                     letterSpacing: -0.2,
                                   ),
                                   overflow: TextOverflow.ellipsis,
                                 ),
-                                SizedBox(height: 2),
+                                const SizedBox(height: 2),
                                 Text(
-                                  'Live Buy/Sell signals • Safe Leverage desk',
+                                  'Live Buy/Sell signals • Safe Leverage desk'.tr(),
                                   style: TextStyle(
-                                    color: Color(0xFF71767B),
+                                    color: AppColors.textSecondary,
                                     fontSize: 12,
                                     fontWeight: FontWeight.w400,
                                   ),
@@ -426,13 +435,14 @@ class DashboardScreen extends ConsumerWidget {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6.5),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFEFF3F4),
+                              color: AppColors.surfaceAlt,
                               borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: AppColors.outline),
                             ),
-                            child: const Text(
-                              'Explore',
+                            child: Text(
+                              'Explore'.tr(),
                               style: TextStyle(
-                                color: Color(0xFF0F141C),
+                                color: AppColors.textPrimary,
                                 fontSize: 12,
                                 fontWeight: FontWeight.w800,
                                 letterSpacing: -0.2,
@@ -454,23 +464,29 @@ class DashboardScreen extends ConsumerWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'NET WORTH',
-                            style: TextStyle(
-                                color: Color(0xFF6B7280),
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 1),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'NET WORTH'.tr(),
+                                style: const TextStyle(
+                                    color: Color(0xFF6B7280),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 1),
+                              ),
+                              const ArenaSwitcher(compact: true),
+                            ],
                           ),
                           const SizedBox(height: 2),
                           BlurLoader(
                             isLoading: isAppLoading,
                             child: Text(
                               formatter.format(totalNetWorth),
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 32,
                                 fontWeight: FontWeight.w700,
-                                color: Colors.white,
+                                color: AppColors.textPrimary,
                                 letterSpacing: -0.5,
                               ),
                             ),
@@ -484,7 +500,7 @@ class DashboardScreen extends ConsumerWidget {
                                 size: 18,
                               ),
                               Text(
-                                '${todayPnl >= 0 ? '+' : ''}${formatter.format(todayPnl)} today',
+                                '${todayPnl >= 0 ? '+' : ''}${formatter.format(todayPnl)} ${'today'.tr()}',
                                 style: TextStyle(
                                   color: todayPnl >= 0 ? AppColors.profit : AppColors.loss,
                                   fontSize: 13,
@@ -515,13 +531,61 @@ class DashboardScreen extends ConsumerWidget {
                           ),
                           _divider(),
                           _StatCell(
-                            label: 'Futures Value',
-                            value: formatter.format(futuresValue),
+                            label: isStockMode ? 'Margin Value' : 'Futures Value',
+                            value: formatter.format(isStockMode ? 0 : futuresValue),
                             isLoading: isAppLoading,
                           ),
                         ],
                       ),
                     ),
+
+                    if (userState.profile.virtualBalance <= 0)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                        child: InkWell(
+                          onTap: () => ZeroBalanceRefillSheet.show(context),
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: AppColors.surfaceAlt,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: AppColors.outline, width: 1),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.info_outline_rounded, color: AppColors.subtle, size: 16),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Trading cash is empty',
+                                    style: TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w600),
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF00C087).withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(color: const Color(0xFF00C087).withValues(alpha: 0.4)),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.play_arrow_rounded, color: Color(0xFF00C087), size: 13),
+                                      SizedBox(width: 2),
+                                      Text(
+                                        'Free Refill',
+                                        style: TextStyle(color: Color(0xFF00C087), fontSize: 11, fontWeight: FontWeight.w700),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
 
                     const _Divider(),
 
@@ -533,8 +597,9 @@ class DashboardScreen extends ConsumerWidget {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF1E2329),
+                              color: AppColors.surfaceAlt,
                               borderRadius: BorderRadius.circular(3),
+                              border: Border.all(color: AppColors.outline),
                             ),
                             child: Text(
                               'Lv $level • ${userState.profile.evolvedTitle}',
@@ -551,7 +616,7 @@ class DashboardScreen extends ConsumerWidget {
                               child: LinearProgressIndicator(
                                 value: (userState.profile.xp % 250) / 250,
                                 minHeight: 4,
-                                backgroundColor: const Color(0xFF1E2329),
+                                backgroundColor: AppColors.surfaceAlt,
                                 valueColor: const AlwaysStoppedAnimation<Color>(
                                     Color(0xFFF0B90B)),
                               ),
@@ -566,18 +631,22 @@ class DashboardScreen extends ConsumerWidget {
                                 fontWeight: FontWeight.w600),
                           ),
                           const SizedBox(width: 10),
-                          Row(
-                            children: [
-                              const Text('🔥', style: TextStyle(fontSize: 12)),
-                              const SizedBox(width: 3),
-                              Text(
-                                '${userState.profile.streak}',
-                                style: const TextStyle(
-                                    color: Color(0xFF6B7280),
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600),
-                              ),
-                            ],
+                          GestureDetector(
+                            onTap: () => DailyCheckInManager.showDailyDialog(context, ref),
+                            behavior: HitTestBehavior.opaque,
+                            child: Row(
+                              children: [
+                                const Text('🔥', style: TextStyle(fontSize: 12)),
+                                const SizedBox(width: 3),
+                                Text(
+                                  '${userState.profile.streak}',
+                                  style: const TextStyle(
+                                      color: Color(0xFF6B7280),
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600),
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                       ),
@@ -588,6 +657,10 @@ class DashboardScreen extends ConsumerWidget {
                 final marketWidget = Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (isStockMode) ...[
+                      _StockIndicesBanner(indices: stockIndices),
+                      const SizedBox(height: 8),
+                    ],
                     // ── MARKET TABLE: GAINERS ─────────────────────────────────────────
                     _SectionHeader(
                       title: 'Top Gainers',
@@ -622,19 +695,20 @@ class DashboardScreen extends ConsumerWidget {
                       ),
                     ),
 
-                    const _Divider(),
+                    if (!isStockMode) ...[
+                      const _Divider(),
 
-                    // ── FUTURES OVERVIEW ──────────────────────────────────────────────
-                    _SectionHeader(title: 'Futures Markets', onTap: null),
-                    // Positions summary strip (Twitter / X Card Style)
-                    if (userState.futuresPositions.isNotEmpty) ...[
-                      Padding(
+                      // ── FUTURES OVERVIEW ──────────────────────────────────────────────
+                      _SectionHeader(title: 'Futures Markets', onTap: null),
+                      // Positions summary strip (Twitter / X Card Style)
+                      if (userState.futuresPositions.isNotEmpty) ...[
+                        Padding(
                         padding: const EdgeInsets.fromLTRB(16, 0, 16, 2),
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF16181C),
-                            border: Border.all(color: const Color(0xFF2F3336), width: 1),
+                            color: AppColors.surface,
+                            border: Border.all(color: AppColors.outline, width: 1),
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: Row(
@@ -644,9 +718,9 @@ class DashboardScreen extends ConsumerWidget {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const Text(
-                                      'OPEN POSITIONS',
-                                      style: TextStyle(
+                                    Text(
+                                      'OPEN POSITIONS'.tr(),
+                                      style: const TextStyle(
                                         color: Color(0xFF71767B),
                                         fontSize: 10,
                                         fontWeight: FontWeight.w700,
@@ -656,8 +730,8 @@ class DashboardScreen extends ConsumerWidget {
                                     const SizedBox(height: 3),
                                     Text(
                                       '${userState.futuresPositions.length}',
-                                      style: const TextStyle(
-                                        color: Colors.white,
+                                      style: TextStyle(
+                                        color: AppColors.textPrimary,
                                         fontSize: 15,
                                         fontWeight: FontWeight.w800,
                                       ),
@@ -668,7 +742,7 @@ class DashboardScreen extends ConsumerWidget {
                               Container(
                                 width: 1,
                                 height: 30,
-                                color: const Color(0xFF2F3336),
+                                color: AppColors.outline,
                                 margin: const EdgeInsets.symmetric(horizontal: 12),
                               ),
                               Expanded(
@@ -691,8 +765,8 @@ class DashboardScreen extends ConsumerWidget {
                                       alignment: Alignment.centerLeft,
                                       child: Text(
                                         formatter.format(futuresInvested),
-                                        style: const TextStyle(
-                                          color: Colors.white,
+                                        style: TextStyle(
+                                          color: AppColors.textPrimary,
                                           fontSize: 15,
                                           fontWeight: FontWeight.w800,
                                         ),
@@ -704,7 +778,7 @@ class DashboardScreen extends ConsumerWidget {
                               Container(
                                 width: 1,
                                 height: 30,
-                                color: const Color(0xFF2F3336),
+                                color: AppColors.outline,
                                 margin: const EdgeInsets.symmetric(horizontal: 12),
                               ),
                               Expanded(
@@ -747,9 +821,13 @@ class DashboardScreen extends ConsumerWidget {
                         padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
                       ),
                       ...userState.futuresPositions.map((pos) {
-                        final stock = market.firstWhere((s) => s.symbol == pos.symbol, orElse: () => market.first);
+                        final stock = stockMap[pos.symbol] ?? cryptoMap[pos.symbol];
+                        final inrRate = CurrencyFormatters.rates['INR'] ?? CurrencyFormatters.usdToInr;
+                        final markPriceUsd = stock != null
+                            ? (stock.currency == 'INR' ? (stock.currentPrice / inrRate) : stock.currentPrice)
+                            : pos.entryPrice;
                         final isLong = pos.side == OrderSide.buy;
-                        final diff = stock.currentPrice - pos.entryPrice;
+                        final diff = markPriceUsd - pos.entryPrice;
                         final pnl = isLong ? diff * pos.quantity : -diff * pos.quantity;
                         final isProfit = pnl >= 0;
 
@@ -764,9 +842,9 @@ class DashboardScreen extends ConsumerWidget {
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF16181C),
+                                color: AppColors.surface,
                                 borderRadius: BorderRadius.circular(16),
-                                border: Border.all(color: const Color(0xFF2F3336), width: 1),
+                                border: Border.all(color: AppColors.outline, width: 1),
                               ),
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -798,9 +876,9 @@ class DashboardScreen extends ConsumerWidget {
                                           ),
                                           const SizedBox(width: 8),
                                           Text(
-                                            '${pos.symbol} PERP',
-                                            style: const TextStyle(
-                                              color: Colors.white,
+                                            pos.symbol,
+                                            style: TextStyle(
+                                              color: AppColors.textPrimary,
                                               fontWeight: FontWeight.w800,
                                               fontSize: 14.5,
                                               letterSpacing: -0.2,
@@ -817,8 +895,8 @@ class DashboardScreen extends ConsumerWidget {
                                           ),
                                           Text(
                                             formatter.format(pos.quantity * pos.entryPrice),
-                                            style: const TextStyle(
-                                              color: Color(0xFFE7E9EA),
+                                            style: TextStyle(
+                                              color: AppColors.textPrimary,
                                               fontSize: 12,
                                               fontWeight: FontWeight.w600,
                                             ),
@@ -832,8 +910,8 @@ class DashboardScreen extends ConsumerWidget {
                                     children: [
                                       Text(
                                         formatter.format(pos.margin + pnl > 0 ? pos.margin + pnl : 0),
-                                        style: const TextStyle(
-                                          color: Colors.white,
+                                        style: TextStyle(
+                                          color: AppColors.textPrimary,
                                           fontWeight: FontWeight.w800,
                                           fontSize: 15,
                                           letterSpacing: -0.2,
@@ -879,7 +957,8 @@ class DashboardScreen extends ConsumerWidget {
                       ),
                     ),
                   ],
-                );
+                ],
+              );
 
                 if (isWide) {
                   return Padding(
@@ -901,7 +980,7 @@ class DashboardScreen extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     portfolioWidget,
-                    gameModesWidget,
+                    if (!isStockMode) gameModesWidget,
                     aiSignalsBanner,
                     const _Divider(),
                     marketWidget,
@@ -932,12 +1011,12 @@ class DashboardScreen extends ConsumerWidget {
                         child: Container(
                           padding: const EdgeInsets.all(15),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF16181C),
+                            color: AppColors.surface,
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
                               color: m.completed
                                   ? AppColors.profit.withValues(alpha: 0.4)
-                                  : const Color(0xFF2F3336),
+                                  : AppColors.outline,
                               width: 1,
                             ),
                           ),
@@ -951,8 +1030,8 @@ class DashboardScreen extends ConsumerWidget {
                                   Expanded(
                                     child: Text(
                                       m.title,
-                                      style: const TextStyle(
-                                        color: Colors.white,
+                                      style: TextStyle(
+                                        color: AppColors.textPrimary,
                                         fontSize: 14,
                                         fontWeight: FontWeight.w800,
                                         letterSpacing: -0.2,
@@ -1010,7 +1089,7 @@ class DashboardScreen extends ConsumerWidget {
                                 child: LinearProgressIndicator(
                                   value: progress,
                                   minHeight: 5,
-                                  backgroundColor: const Color(0xFF202327),
+                                  backgroundColor: AppColors.surfaceAlt,
                                   color: m.completed ? AppColors.profit : AppColors.primary,
                                 ),
                               ),
@@ -1051,23 +1130,34 @@ class DashboardScreen extends ConsumerWidget {
             ],
 
             // ── WATCHLIST ─────────────────────────────────────────────────────
-            if (watchlist.isNotEmpty) ...[
-              _SectionHeader(title: 'Watchlist', onTap: null),
-              _MarketTable(
-                stocks: watchlist
-                    .map((sym) => market.firstWhere((s) => s.symbol == sym,
-                        orElse: () => market.first))
-                    .toList(),
-                formatter: formatter,
-                onTap: (s) => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => StockDetailScreen(stockSymbol: s.symbol),
-                  ),
-                ),
-              ),
-              const _Divider(),
-            ],
+            Builder(
+              builder: (context) {
+                final currentModeWatchlist = watchlist
+                    .where((sym) => market.any((s) => s.symbol == sym))
+                    .map((sym) => market.firstWhere((s) => s.symbol == sym))
+                    .toList();
+
+                if (currentModeWatchlist.isEmpty) return const SizedBox.shrink();
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _SectionHeader(title: 'Watchlist', onTap: null),
+                    _MarketTable(
+                      stocks: currentModeWatchlist,
+                      formatter: formatter,
+                      onTap: (s) => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => StockDetailScreen(stockSymbol: s.symbol),
+                        ),
+                      ),
+                    ),
+                    const _Divider(),
+                  ],
+                );
+              },
+            ),
 
             const SizedBox(height: 24),
           ],
@@ -1081,7 +1171,7 @@ class DashboardScreen extends ConsumerWidget {
   Widget _divider() => Container(
         width: 1,
         height: 32,
-        color: const Color(0xFF2B3139),
+        color: AppColors.outline,
         margin: const EdgeInsets.symmetric(horizontal: 12),
       );
 
@@ -1106,7 +1196,8 @@ class _AutoScrollingCryptoTickerState extends ConsumerState<_AutoScrollingCrypto
   void initState() {
     super.initState();
     _timer = Timer.periodic(const Duration(seconds: 3), (_) {
-      final marketLength = ref.read(marketProvider).length;
+      final isStocks = ref.read(marketModeProvider) == MarketMode.stocks;
+      final marketLength = isStocks ? ref.read(stockMarketProvider).length : ref.read(marketProvider).length;
       if (mounted && marketLength > 0) {
         setState(() {
           _currentIndex = (_currentIndex + 1) % marketLength;
@@ -1123,7 +1214,8 @@ class _AutoScrollingCryptoTickerState extends ConsumerState<_AutoScrollingCrypto
 
   @override
   Widget build(BuildContext context) {
-    final market = ref.read(marketProvider);
+    final isStocks = ref.watch(marketModeProvider) == MarketMode.stocks;
+    final market = isStocks ? ref.watch(stockMarketProvider) : ref.watch(marketProvider);
     final currency = ref.watch(userProvider.select((u) => u.profile.preferredCurrency));
     final formatter = AppCurrencyFormatter(currency);
 
@@ -1138,11 +1230,11 @@ class _AutoScrollingCryptoTickerState extends ConsumerState<_AutoScrollingCrypto
       width: double.infinity,
       margin: EdgeInsets.zero,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-      decoration: const BoxDecoration(
-        color: Color(0xFF16181C),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceAlt,
         border: Border(
-          top: BorderSide(color: Color(0xFF262D35), width: 0.6),
-          bottom: BorderSide(color: Color(0xFF262D35), width: 0.6),
+          top: BorderSide(color: AppColors.outline, width: 0.6),
+          bottom: BorderSide(color: AppColors.outline, width: 0.6),
         ),
       ),
       child: GestureDetector(
@@ -1183,7 +1275,7 @@ class _AutoScrollingCryptoTickerState extends ConsumerState<_AutoScrollingCrypto
                     Text(
                       '${stock.symbol}/USDT',
                       style: GoogleFonts.inter(
-                        color: Colors.white,
+                        color: AppColors.textPrimary,
                         fontWeight: FontWeight.w700,
                         fontSize: 12,
                         letterSpacing: -0.1,
@@ -1191,9 +1283,13 @@ class _AutoScrollingCryptoTickerState extends ConsumerState<_AutoScrollingCrypto
                     ),
                     const Spacer(),
                     Text(
-                      formatter.format(stock.currentPrice),
+                      stock.isStock
+                      ? (stock.currency == 'INR'
+                          ? CurrencyFormatters.format(stock.currentPrice, formatter.currencyCode)
+                          : CurrencyFormatters.formatUsd(stock.currentPrice, formatter.currencyCode))
+                      : formatter.format(stock.currentPrice),
                       style: GoogleFonts.inter(
-                        color: Colors.white,
+                        color: AppColors.textPrimary,
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                       ),
@@ -1237,13 +1333,11 @@ class _AutoScrollingCryptoTickerState extends ConsumerState<_AutoScrollingCrypto
 class _StatCell extends StatelessWidget {
   final String label;
   final String value;
-  final Color? valueColor;
   final bool isLoading;
 
   const _StatCell({
     required this.label,
     required this.value,
-    this.valueColor,
     this.isLoading = false,
   });
 
@@ -1254,7 +1348,7 @@ class _StatCell extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            label,
+            label.tr(),
             style: const TextStyle(
                 color: Color(0xFF6B7280), fontSize: 11, fontWeight: FontWeight.w500),
           ),
@@ -1264,7 +1358,7 @@ class _StatCell extends StatelessWidget {
             child: Text(
               value,
               style: TextStyle(
-                color: valueColor ?? Colors.white,
+                color: AppColors.textPrimary,
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
               ),
@@ -1343,9 +1437,9 @@ class _SectionHeader extends StatelessWidget {
       child: Row(
         children: [
           Text(
-            title,
-            style: const TextStyle(
-              color: Colors.white,
+            title.tr(),
+            style: TextStyle(
+              color: AppColors.textPrimary,
               fontSize: 13,
               fontWeight: FontWeight.w700,
               letterSpacing: 0.2,
@@ -1355,9 +1449,9 @@ class _SectionHeader extends StatelessWidget {
           if (onTap != null)
             GestureDetector(
               onTap: onTap,
-              child: const Text(
-                'View all',
-                style: TextStyle(
+              child: Text(
+                'View all'.tr(),
+                style: const TextStyle(
                     color: AppColors.primary,
                     fontSize: 12,
                     fontWeight: FontWeight.w600),
@@ -1379,7 +1473,7 @@ class _Divider extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       height: 1,
-      color: const Color(0xFF1E2329),
+      color: AppColors.outline,
       margin: const EdgeInsets.only(top: 16),
     );
   }
@@ -1434,7 +1528,7 @@ class _ColHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Text(
-      text,
+      text.tr(),
       textAlign: align,
       style: const TextStyle(
           color: Color(0xFF4B5563), fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 0.5),
@@ -1481,8 +1575,8 @@ class _MarketRow extends StatelessWidget {
                       children: [
                         Text(
                           stock.symbol,
-                          style: const TextStyle(
-                              color: Colors.white,
+                          style: TextStyle(
+                              color: AppColors.textPrimary,
                               fontWeight: FontWeight.w600,
                               fontSize: 13),
                           maxLines: 1,
@@ -1490,8 +1584,8 @@ class _MarketRow extends StatelessWidget {
                         ),
                         Text(
                           stock.name,
-                          style: const TextStyle(
-                              color: Color(0xFF4B5563), fontSize: 10),
+                          style: TextStyle(
+                              color: AppColors.subtle, fontSize: 10),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -1517,9 +1611,13 @@ class _MarketRow extends StatelessWidget {
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerRight,
                       child: Text(
-                        formatter.format(stock.currentPrice),
-                        style: const TextStyle(
-                            color: Colors.white,
+                        stock.isStock
+                            ? (stock.currency == 'INR'
+                                ? CurrencyFormatters.format(stock.currentPrice, formatter.currencyCode)
+                                : CurrencyFormatters.formatUsd(stock.currentPrice, formatter.currencyCode))
+                            : formatter.format(stock.currentPrice),
+                        style: TextStyle(
+                            color: AppColors.textPrimary,
                             fontWeight: FontWeight.w600,
                             fontSize: 13),
                       ),
@@ -1541,7 +1639,7 @@ class _MarketRow extends StatelessWidget {
                     : Center(
                         child: Container(
                           height: 1,
-                          color: const Color(0xFF2B3139),
+                          color: AppColors.outline,
                         ),
                       ),
               ),
@@ -1555,7 +1653,7 @@ class _MarketRow extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                   decoration: BoxDecoration(
                     color: stock.currentPrice == 0
-                        ? const Color(0xFF1E2329)
+                        ? AppColors.surfaceAlt
                         : color.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(3),
                   ),
@@ -1565,7 +1663,7 @@ class _MarketRow extends StatelessWidget {
                         : '${good ? '+' : ''}${stock.changePercentage.toStringAsFixed(2)}%',
                     style: TextStyle(
                         color: stock.currentPrice == 0
-                            ? const Color(0xFF4B5563)
+                            ? AppColors.subtle
                             : color,
                         fontSize: 11,
                         fontWeight: FontWeight.w700),
@@ -1650,28 +1748,34 @@ class _FuturesRow extends StatelessWidget {
               flex: 5,
               child: Row(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1A1F28),
-                      border: Border.all(color: const Color(0xFF2B3139)),
-                      borderRadius: BorderRadius.circular(3),
-                    ),
-                    child: const Text(
-                      'PERP',
-                      style: TextStyle(
-                          color: Color(0xFFF0B90B),
-                          fontSize: 9,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.3),
-                    ),
-                  ),
+                  CoinIcon(symbol: stock.symbol, size: 22),
                   const SizedBox(width: 8),
+                  if (stock.isStock) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF3B82F6).withValues(alpha: 0.15),
+                        border: Border.all(
+                          color: const Color(0xFF3B82F6).withValues(alpha: 0.3),
+                        ),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                      child: const Text(
+                        '5x',
+                        style: TextStyle(
+                            color: Color(0xFF60A5FA),
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.3),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
                   Flexible(
                     child: Text(
                       '${stock.symbol}/${formatter.currencyCode ?? 'USD'}',
-                      style: const TextStyle(
-                          color: Colors.white,
+                      style: TextStyle(
+                          color: AppColors.textPrimary,
                           fontWeight: FontWeight.w600,
                           fontSize: 13),
                       maxLines: 1,
@@ -1688,9 +1792,13 @@ class _FuturesRow extends StatelessWidget {
                 fit: BoxFit.scaleDown,
                 alignment: Alignment.centerRight,
                 child: Text(
-                  formatter.format(stock.currentPrice),
-                  style: const TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13),
+                  stock.isStock
+                      ? (stock.currency == 'INR'
+                          ? CurrencyFormatters.format(stock.currentPrice, formatter.currencyCode)
+                          : CurrencyFormatters.formatUsd(stock.currentPrice, formatter.currencyCode))
+                      : formatter.format(stock.currentPrice),
+                  style: TextStyle(
+                      color: AppColors.textPrimary, fontWeight: FontWeight.w600, fontSize: 13),
                 ),
               ),
             ),
@@ -1791,6 +1899,138 @@ class _BlurLoaderState extends State<BlurLoader> with SingleTickerProviderStateM
   }
 }
 
+class _StockIndicesBanner extends StatelessWidget {
+  final List<Stock> indices;
+  const _StockIndicesBanner({required this.indices});
+
+  @override
+  Widget build(BuildContext context) {
+    if (indices.isEmpty) return const SizedBox.shrink();
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // On small screens (< 390px), use a smooth horizontal scroll so cards never cramp.
+        // On medium & large screens (>= 390px), stretch cards evenly across the row.
+        final isSmallScreen = constraints.maxWidth < 390;
+
+        if (isSmallScreen) {
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Row(
+              children: indices.asMap().entries.map((entry) {
+                final i = entry.key;
+                final idx = entry.value;
+                return Padding(
+                  padding: EdgeInsets.only(right: i < indices.length - 1 ? 10 : 0),
+                  child: SizedBox(
+                    width: 132,
+                    child: _buildIndexCard(context, idx),
+                  ),
+                );
+              }).toList(),
+            ),
+          );
+        }
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: Row(
+            children: indices.asMap().entries.map((entry) {
+              final i = entry.key;
+              final idx = entry.value;
+              return Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(right: i < indices.length - 1 ? 8 : 0),
+                  child: _buildIndexCard(context, idx),
+                ),
+              );
+            }).toList(),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildIndexCard(BuildContext context, Stock idx) {
+    final isPos = idx.changePercentage >= 0;
+    final color = isPos ? const Color(0xFF0ECB81) : const Color(0xFFF6465D);
+    final curr = idx.currency == 'INR' ? '₹' : '\$';
+    String displayName = idx.name.replaceAll(' Composite', '');
+    if (displayName.contains('Dow')) {
+      displayName = 'DOW 30';
+    }
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => StockDetailScreen(stockSymbol: idx.symbol)),
+      ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.outline),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: AppColors.subtle,
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4.5, vertical: 1.5),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    '${isPos ? "+" : ""}${idx.changePercentage.toStringAsFixed(2)}%',
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                '$curr${idx.currentPrice.toStringAsFixed(2)}',
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class TopRankBadge extends ConsumerStatefulWidget {
   final String userName;
   const TopRankBadge({super.key, required this.userName});
@@ -1877,7 +2117,4 @@ class _TopRankBadgeState extends ConsumerState<TopRankBadge> {
     );
   }
 }
-
-
-
 

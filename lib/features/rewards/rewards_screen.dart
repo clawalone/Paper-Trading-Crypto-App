@@ -1,9 +1,10 @@
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart' hide Badge;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/app_theme.dart';
 import '../../core/currency_formatters.dart';
+import '../../data/market_mode_provider.dart';
 import '../../data/user_provider.dart';
 import '../../data/models.dart';
 import '../learn/quiz_screen.dart';
@@ -81,6 +82,8 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
   Widget build(BuildContext context) {
     final userState = ref.watch(userProvider);
     final profile = userState.profile;
+    final marketMode = ref.watch(marketModeProvider);
+    final isStockMode = marketMode == MarketMode.stocks;
 
     final currentLevel = (profile.xp ~/ 250) + 1;
     final xpForNextLevel = currentLevel * 250;
@@ -165,12 +168,13 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
 
               const SizedBox(height: 14),
 
-              // ── 4. DAILY CRYPTO IQ QUIZ CARD ──────────────────────────────
+              // ── 4. DAILY CRYPTO / WALL STREET IQ QUIZ CARD ────────────────
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: _buildDailyQuizCard(
                   context: context,
                   quizAttemptedToday: quizAttemptedToday,
+                  isStockMode: isStockMode,
                 ),
               ),
 
@@ -182,6 +186,7 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
                 child: _buildMissionCenter(
                   context: context,
                   userState: userState,
+                  isStockMode: isStockMode,
                 ),
               ),
 
@@ -190,7 +195,10 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
               // ── 6. TROPHY CABINET (BADGES) ────────────────────────────────
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: _buildTrophyCabinet(profile: profile),
+                child: _buildTrophyCabinet(
+                  profile: profile,
+                  isStockMode: isStockMode,
+                ),
               ),
             ],
           ),
@@ -1130,6 +1138,7 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
   Widget _buildDailyQuizCard({
     required BuildContext context,
     required bool quizAttemptedToday,
+    bool isStockMode = false,
   }) {
     return Container(
       padding: const EdgeInsets.all(17),
@@ -1156,7 +1165,7 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Daily Crypto IQ Quiz',
+                  isStockMode ? 'Daily Wall Street IQ Quiz' : 'Daily Crypto IQ Quiz',
                   style: GoogleFonts.inter(
                     color: _textHigh,
                     fontSize: 14.5,
@@ -1167,7 +1176,9 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
                 Text(
                   quizAttemptedToday
                       ? 'Completed for today • Great job!'
-                      : 'Test your crypto market IQ • +120 XP',
+                      : (isStockMode
+                          ? 'Test your stock market & investing IQ • +120 XP'
+                          : 'Test your crypto market IQ • +120 XP'),
                   style: GoogleFonts.inter(
                     color: quizAttemptedToday ? _brandGreen : _textMid,
                     fontSize: 12,
@@ -1199,7 +1210,7 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const QuizScreen()),
+                  MaterialPageRoute(builder: (_) => QuizScreen(isStock: isStockMode)),
                 );
               },
               style: ElevatedButton.styleFrom(
@@ -1227,8 +1238,13 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
   Widget _buildMissionCenter({
     required BuildContext context,
     required UserState userState,
+    bool isStockMode = false,
   }) {
-    final allMissions = userState.missions;
+    final arenaMissions = userState.missions.where((m) {
+      if (isStockMode) return m.id.startsWith('m_s');
+      return !m.id.startsWith('m_s');
+    }).toList();
+    final allMissions = arenaMissions.isNotEmpty ? arenaMissions : userState.missions;
     final readyMissions = allMissions.where((m) => m.completed).toList();
     final inProgressMissions = allMissions.where((m) => !m.completed).toList();
 
@@ -1252,7 +1268,7 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
                 const Icon(Icons.bolt_rounded, color: _brandGold, size: 19),
                 const SizedBox(width: 8),
                 Text(
-                  'Trading Quests Matrix',
+                  isStockMode ? 'Stock Quests Matrix' : 'Trading Quests Matrix',
                   style: GoogleFonts.inter(
                     color: _textHigh,
                     fontSize: 16,
@@ -1466,8 +1482,25 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
   // ═══════════════════════════════════════════════════════════════════════════
   // ─── 6. TROPHY CABINET (BADGES) ───────────────────────────────────────────
   // ═══════════════════════════════════════════════════════════════════════════
-  Widget _buildTrophyCabinet({required UserProfile profile}) {
+  Widget _buildTrophyCabinet({
+    required UserProfile profile,
+    bool isStockMode = false,
+  }) {
     final unlockedCount = profile.unlockedBadges.length;
+
+    final sortedBadges = List<Badge>.from(ALL_BADGES);
+    sortedBadges.sort((a, b) {
+      final aIsStock = a.id.startsWith('b_stock');
+      final bIsStock = b.id.startsWith('b_stock');
+      if (isStockMode) {
+        if (aIsStock && !bIsStock) return -1;
+        if (!aIsStock && bIsStock) return 1;
+      } else {
+        if (!aIsStock && bIsStock) return -1;
+        if (aIsStock && !bIsStock) return 1;
+      }
+      return 0;
+    });
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1505,7 +1538,7 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
         GridView.builder(
           physics: const NeverScrollableScrollPhysics(),
           shrinkWrap: true,
-          itemCount: ALL_BADGES.length,
+          itemCount: sortedBadges.length,
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 2,
             crossAxisSpacing: 10,
@@ -1513,7 +1546,7 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
             childAspectRatio: 1.3,
           ),
           itemBuilder: (context, index) {
-            final badge = ALL_BADGES[index];
+            final badge = sortedBadges[index];
             final isUnlocked = profile.unlockedBadges.contains(badge.id);
 
             return Container(

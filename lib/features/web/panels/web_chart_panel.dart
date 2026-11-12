@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
 
@@ -27,6 +27,16 @@ class _WebChartPanelState extends ConsumerState<WebChartPanel> {
     final color = good ? AppColors.profit : AppColors.loss;
     final userState = ref.watch(userProvider);
     final formatter = AppCurrencyFormatter(userState.profile.preferredCurrency);
+
+    DateTime? nativeVisibleMin;
+    DateTime? nativeVisibleMax;
+    if (stock.candleHistory.length > 40) {
+      nativeVisibleMin = stock.candleHistory[stock.candleHistory.length - 40].date;
+      final lastDate = stock.candleHistory.last.date;
+      final secondLastDate = stock.candleHistory[stock.candleHistory.length - 2].date;
+      final diffMin = lastDate.difference(secondLastDate).inMinutes.clamp(1, 1440);
+      nativeVisibleMax = lastDate.add(Duration(minutes: diffMin * 4));
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -100,7 +110,7 @@ class _WebChartPanelState extends ConsumerState<WebChartPanel> {
         Expanded(
           child: _chartType == 0
               ? TradingViewChart(
-                  key: ValueKey('web_tv_${stock.symbol}'),
+                  key: ValueKey('web_tv_${stock.symbol}_${AppColors.isDarkMode}'),
                   symbol: stock.symbol,
                   initialInterval: '15',
                   enableDrawingToolbar: true,
@@ -119,6 +129,8 @@ class _WebChartPanelState extends ConsumerState<WebChartPanel> {
               ),
               zoomPanBehavior: ZoomPanBehavior(enablePanning: true, enablePinching: true, zoomMode: ZoomMode.x),
               primaryXAxis: DateTimeAxis(
+                initialVisibleMinimum: nativeVisibleMin,
+                initialVisibleMaximum: nativeVisibleMax,
                 majorGridLines: const MajorGridLines(width: 0),
                 labelStyle: const TextStyle(color: Color(0xFF848E9C), fontSize: 10),
                 axisLine: const AxisLine(color: Color(0xFF2B3139)),
@@ -151,6 +163,8 @@ class _WebChartPanelState extends ConsumerState<WebChartPanel> {
                 tooltipSettings: const InteractiveTooltip(color: Color(0xFF2B3139)),
               ),
               primaryXAxis: DateTimeAxis(
+                initialVisibleMinimum: nativeVisibleMin,
+                initialVisibleMaximum: nativeVisibleMax,
                 majorGridLines: const MajorGridLines(width: 0),
                 labelStyle: const TextStyle(color: Color(0xFF848E9C), fontSize: 10),
                 axisLine: const AxisLine(color: Color(0xFF2B3139)),

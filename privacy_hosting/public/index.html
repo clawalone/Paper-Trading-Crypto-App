@@ -3,96 +3,482 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Privacy Policy - PaperTrading: Crypto</title>
+  <title>Privacy Policy - PaperTrading - Crypto &amp; Stocks</title>
+  <meta name="description" content="Privacy Policy for PaperTrading - Crypto &amp; Stocks mobile application by Acadrio." />
   <style>
+    :root {
+      --primary: #00D09C;
+      --primary-tint: rgba(0, 208, 156, 0.12);
+      --primary-border: rgba(0, 208, 156, 0.35);
+      --bg-dark: #0B0E14;
+      --surface: #141820;
+      --surface-alt: #1B212D;
+      --border: #262D3D;
+      --text-main: #F1F5F9;
+      --text-muted: #94A3B8;
+      --text-subtle: #64748B;
+      --blue-accent: #1D9BF0;
+      --blue-tint: rgba(29, 155, 240, 0.12);
+      --warning: #F59E0B;
+    }
+
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+
     body {
-      font-family: 'Segoe UI', Arial, sans-serif;
-      background: #000000;
-      color: #c9d1d9;
-      padding: 40px 20px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      line-height: 1.7;
+      padding: 40px 20px 80px;
     }
-    .container { max-width: 820px; margin: auto; }
-    h1 { font-size: 2rem; color: #00c087; margin-bottom: 8px; }
-    .subtitle { color: #6b7280; font-size: 0.9rem; margin-bottom: 32px; }
-    h2 { color: #ffffff; font-size: 1.1rem; margin: 28px 0 10px; border-left: 3px solid #00c087; padding-left: 12px; }
-    p, li { line-height: 1.8; color: #9ca3af; font-size: 0.95rem; }
-    ul { padding-left: 20px; margin-top: 8px; }
-    li { margin-bottom: 6px; }
-    .highlight { color: #00c087; font-weight: bold; }
-    .disclaimer {
-      background: #161b22;
-      border: 1px solid #2d333b;
-      border-radius: 8px;
+
+    .container {
+      max-width: 860px;
+      margin: 0 auto;
+    }
+
+    /* Header */
+    .header {
+      margin-bottom: 32px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--primary-tint);
+      border: 1px solid var(--primary-border);
+      color: var(--primary);
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+
+    .badge::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      background: var(--primary);
+      border-radius: 50%;
+    }
+
+    h1 {
+      font-size: 2.25rem;
+      font-weight: 800;
+      color: #FFFFFF;
+      letter-spacing: -0.5px;
+      margin-bottom: 8px;
+    }
+
+    .meta {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .meta span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* Highlight Banner (Paper Trading Simulator) */
+    .simulator-banner {
+      background: linear-gradient(135deg, rgba(0, 208, 156, 0.08) 0%, rgba(29, 155, 240, 0.08) 100%);
+      border: 1px solid var(--primary-border);
+      border-radius: 14px;
+      padding: 20px 24px;
+      margin-bottom: 32px;
+    }
+
+    .simulator-banner h3 {
+      color: var(--primary);
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .simulator-banner p {
+      color: var(--text-main);
+      font-size: 0.95rem;
+      line-height: 1.6;
+    }
+
+    /* Quick Jump Table of Contents */
+    .toc-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 24px;
+      margin-bottom: 36px;
+    }
+
+    .toc-title {
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-weight: 700;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+
+    .toc-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 8px 16px;
+      list-style: none;
+    }
+
+    .toc-grid a {
+      color: var(--blue-accent);
+      text-decoration: none;
+      font-size: 0.9rem;
+      transition: color 0.2s ease;
+    }
+
+    .toc-grid a:hover {
+      text-decoration: underline;
+      color: var(--primary);
+    }
+
+    /* Content Sections */
+    section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 28px;
+      margin-bottom: 24px;
+    }
+
+    section h2 {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: #FFFFFF;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    section p {
+      color: var(--text-muted);
+      font-size: 0.96rem;
+      margin-bottom: 14px;
+    }
+
+    section p:last-child {
+      margin-bottom: 0;
+    }
+
+    ul {
+      list-style: none;
+      margin: 12px 0 16px;
+      padding-left: 0;
+    }
+
+    li {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      margin-bottom: 10px;
+      position: relative;
+      padding-left: 24px;
+    }
+
+    li::before {
+      content: "•";
+      color: var(--primary);
+      font-size: 1.4rem;
+      position: absolute;
+      left: 6px;
+      top: -3px;
+    }
+
+    li strong {
+      color: var(--text-main);
+    }
+
+    /* Sub-cards inside sections */
+    .sub-card {
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+      border-radius: 10px;
       padding: 16px 20px;
-      margin-top: 12px;
+      margin-top: 14px;
+      margin-bottom: 14px;
     }
-    footer { margin-top: 48px; color: #6b7280; font-size: 0.85rem; text-align: center; }
-    a { color: #00c087; }
+
+    .sub-card h4 {
+      color: #FFFFFF;
+      font-size: 0.95rem;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .sub-card p {
+      font-size: 0.9rem;
+      margin-bottom: 0;
+    }
+
+    a {
+      color: var(--blue-accent);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    /* Footer */
+    footer {
+      margin-top: 48px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+      text-align: center;
+      color: var(--text-subtle);
+      font-size: 0.9rem;
+    }
+
+    footer a {
+      margin: 0 8px;
+    }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>Privacy Policy</h1>
-    <p class="subtitle">PaperTrading: Crypto &nbsp;|&nbsp; Last updated: June 11, 2025</p>
 
-    <p>PaperTrading: Crypto ("we", "our", or "us") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, and safeguard your information when you use our mobile application.</p>
+    <!-- Header -->
+    <header class="header">
+      <div class="badge">Official Legal Document</div>
+      <h1>Privacy Policy</h1>
+      <div class="meta">
+        <span><strong>App:</strong> PaperTrading - Crypto &amp; Stocks</span>
+        <span><strong>Package:</strong> com.acadriotrade</span>
+        <span><strong>Updated:</strong> November 6, 2026</span>
+      </div>
+    </header>
 
-    <h2>Information We Collect</h2>
-    <p>We collect the following information when you create an account:</p>
-    <ul>
-      <li>Email address (used for authentication via Firebase)</li>
-      <li>Username / display name</li>
-      <li>App usage data (virtual trades, portfolio performance, XP, missions)</li>
-    </ul>
-
-    <h2>How We Use Your Information</h2>
-    <ul>
-      <li>To create and manage your account</li>
-      <li>To save your virtual portfolio and trading history</li>
-      <li>To display leaderboard rankings</li>
-      <li>To track mission and reward progress</li>
-      <li>To improve the overall app experience</li>
-    </ul>
-
-    <h2>No Real Financial Data</h2>
-    <div class="disclaimer">
-      <p><span class="highlight">PaperTrading: Crypto is a simulator.</span> We do <strong>NOT</strong> collect, process, or store any real financial data, bank account details, credit card information, or payment information. All balances, trades, and profits within the app are entirely <strong>virtual</strong> and hold no real-world monetary value.</p>
+    <!-- Simulator Disclaimer Banner -->
+    <div class="simulator-banner">
+      <h3>🛡️ 100% Virtual Simulator — No Real Financial Risk</h3>
+      <p>
+        <strong>PaperTrading - Crypto &amp; Stocks</strong> is an educational paper trading simulator. All currencies, portfolio balances, simulated spot and futures orders, championship prize pools, and top-up packages are <strong>entirely virtual</strong> and carry <strong>zero real-world monetary value</strong>. We do not support real deposits, fiat-to-crypto exchanges, or withdrawals.
+      </p>
     </div>
 
-    <h2>Third-Party Services</h2>
-    <p>We use the following third-party services:</p>
-    <ul>
-      <li><strong>Firebase (Google)</strong> – User authentication and cloud database storage. See <a href="https://firebase.google.com/support/privacy" target="_blank">Firebase Privacy Policy</a>.</li>
-      <li><strong>Binance Public API</strong> – Real-time cryptocurrency market price data. No user data is sent to Binance.</li>
-    </ul>
+    <!-- Table of Contents -->
+    <nav class="toc-card">
+      <div class="toc-title">Quick Navigation</div>
+      <ul class="toc-grid">
+        <li><a href="#overview">1. Overview & Scope</a></li>
+        <li><a href="#information-collected">2. Information We Collect</a></li>
+        <li><a href="#usage">3. How We Use Information</a></li>
+        <li><a href="#advertising">4. Ads & Google UMP (GDPR)</a></li>
+        <li><a href="#purchases">5. Google Play In-App Purchases</a></li>
+        <li><a href="#third-parties">6. Third-Party Service Providers</a></li>
+        <li><a href="#gdpr">7. European Privacy Rights (EEA/UK)</a></li>
+        <li><a href="#ccpa">8. California Privacy Rights (CCPA)</a></li>
+        <li><a href="#retention">9. Data Retention & Deletion</a></li>
+        <li><a href="#security">10. Security & Protection</a></li>
+        <li><a href="#children">11. Children's Privacy</a></li>
+        <li><a href="#contact">12. Contact & Inquiries</a></li>
+      </ul>
+    </nav>
 
-    <h2>Data Security</h2>
-    <p>Your data is stored securely using Google Firebase infrastructure. We implement industry-standard security measures to protect your personal information from unauthorized access, alteration, or disclosure.</p>
+    <!-- 1. Overview -->
+    <section id="overview">
+      <h2>1. Overview & Scope</h2>
+      <p>
+        This Privacy Policy explains how <strong>Acadrio</strong> ("we", "our", or "us") collects, uses, stores, and protects your information when you use the <strong>PaperTrading - Crypto &amp; Stocks</strong> mobile application ("App").
+      </p>
+      <p>
+        By downloading, installing, or accessing PaperTrading - Crypto &amp; Stocks, you acknowledge and agree to the collection and use of data in accordance with this policy. If you do not agree with this policy, please do not use the application.
+      </p>
+    </section>
 
-    <h2>Data Retention</h2>
-    <p>We retain your account data for as long as your account is active. You may request deletion of your account and all associated data at any time by contacting us.</p>
+    <!-- 2. Information We Collect -->
+    <section id="information-collected">
+      <h2>2. Information We Collect</h2>
+      <p>We collect only the minimum data necessary to operate a secure, interactive trading simulation platform:</p>
 
-    <h2>Children's Privacy</h2>
-    <p>Our application is not directed to children under the age of 13. We do not knowingly collect personal information from children under 13. If you believe your child has provided us with personal information, please contact us immediately.</p>
+      <ul>
+        <li>
+          <strong>Account & Profile Data:</strong> When registering, we collect your email address, display name / username, avatar choice, and public UID generated via Firebase Authentication.
+        </li>
+        <li>
+          <strong>Simulation & Trading Activity:</strong> Virtual portfolio balance, open/closed virtual trades, profit/loss (PnL) metrics, tournament rankings, XP milestones, and achievement badges.
+        </li>
+        <li>
+          <strong>Device & Technical Diagnostics:</strong> Operating system version, device model, language preferences, approximate IP location, crash logs, and app performance analytics for platform stability.
+        </li>
+        <li>
+          <strong>Push Notification Tokens:</strong> Firebase Cloud Messaging (FCM) registration tokens to deliver voluntary real-time price alerts, trade status notifications, and weekly tournament results.
+        </li>
+        <li>
+          <strong>Advertising Identifiers:</strong> Google Advertising ID (AAID) for ad serving and frequency capping, strictly subject to your consent choices.
+        </li>
+      </ul>
 
-    <h2>Your Rights</h2>
-    <ul>
-      <li>Access the personal data we hold about you</li>
-      <li>Request correction of inaccurate data</li>
-      <li>Request deletion of your account and data</li>
-    </ul>
+      <div class="sub-card">
+        <h4>🔒 No Banking or Financial Credentials Collected</h4>
+        <p>We <strong>never</strong> request, collect, or store bank account numbers, credit/debit card numbers, private crypto wallet keys, or payment PINs. All financial transactions are strictly prohibited within the simulation.</p>
+      </div>
+    </section>
 
-    <h2>Changes to This Policy</h2>
-    <p>We may update this Privacy Policy from time to time. We will notify you of any significant changes by updating the "Last updated" date at the top of this page.</p>
+    <!-- 3. How We Use Information -->
+    <section id="usage">
+      <h2>3. How We Use Information</h2>
+      <p>We process your data exclusively for legitimate operational purposes:</p>
+      <ul>
+        <li><strong>Account Management:</strong> Authenticating logins, restoring portfolios across devices, and maintaining your virtual paper trading history.</li>
+        <li><strong>Platform Integrity:</strong> Calculating real-time weekly tournament standings, XP leaderboards, and preventing automated bot manipulation.</li>
+        <li><strong>Ad Reward Distribution:</strong> Verifying completion of voluntary rewarded video ads to grant virtual simulation capital refills.</li>
+        <li><strong>Service Updates:</strong> Sending important security notices and critical service announcements.</li>
+      </ul>
+    </section>
 
-    <h2>Contact Us</h2>
-    <p>If you have any questions or requests regarding this Privacy Policy, please contact us at:<br/>
-    <a href="mailto:acadrio.query@gmail.com">acadrio.query@gmail.com</a></p>
+    <!-- 4. Advertising & Google UMP (GDPR) -->
+    <section id="advertising">
+      <h2>4. Advertising & Google UMP (GDPR)</h2>
+      <p>
+        We display advertisements provided by <strong>Google AdMob</strong> to support free access to market simulation data and allow users to earn voluntary virtual cash refills through rewarded video ads.
+      </p>
+      
+      <div class="sub-card">
+        <h4>🇪🇺 European Regulations & Google User Messaging Platform (UMP)</h4>
+        <p>
+          For visitors residing in the European Economic Area (EEA), the United Kingdom, and Switzerland, we utilize Google's certified <strong>User Messaging Platform (UMP)</strong> Consent Management Platform (CMP). We collect explicit consent before serving personalized advertisements.
+        </p>
+      </div>
 
+      <p>
+        Users have the legal right to accept, reject, or customize consent choices at any time. When consent is denied, only non-personalized, contextual advertisements are served in accordance with Google AdMob policy.
+      </p>
+    </section>
+
+    <!-- 5. In-App Purchases & Google Play Billing -->
+    <section id="purchases">
+      <h2>5. Google Play In-App Purchases</h2>
+      <p>
+        PaperTrading - Crypto &amp; Stocks offers optional in-app purchases (such as virtual capital refill bundles and Pro Trader access).
+      </p>
+      <ul>
+        <li>All purchases are processed securely and directly by <strong>Google Play Billing</strong>.</li>
+        <li>We do not receive or store your credit card information, billing address, or payment details. Google Play manages payment processing under its own <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Privacy Policy</a> and Terms of Service.</li>
+        <li>All purchased packages grant <strong>virtual paper assets only</strong> with zero real-world cash equivalence.</li>
+      </ul>
+    </section>
+
+    <!-- 6. Third-Party Service Providers -->
+    <section id="third-parties">
+      <h2>6. Third-Party Service Providers</h2>
+      <p>We partner with industry-leading infrastructure providers under strict confidentiality agreements:</p>
+      <ul>
+        <li><strong>Google Firebase (Alphabet Inc.):</strong> Cloud database (Firestore), user authentication, and push notifications. <a href="https://firebase.google.com/support/privacy" target="_blank" rel="noopener">Firebase Privacy Policy</a>.</li>
+        <li><strong>Google AdMob (Alphabet Inc.):</strong> Mobile ad delivery, mediation, and rewarded video ads. <a href="https://policies.google.com/technologies/ads" target="_blank" rel="noopener">Google Ads Privacy</a>.</li>
+        <li><strong>Binance Public Market API:</strong> Real-time cryptocurrency price tickers and candlestick chart data. No personally identifiable user information is shared.</li>
+      </ul>
+    </section>
+
+    <!-- 7. GDPR Rights -->
+    <section id="gdpr">
+      <h2>7. European Privacy Rights (GDPR)</h2>
+      <p>If you are a resident of the European Economic Area (EEA) or UK, you hold the following rights under GDPR:</p>
+      <ul>
+        <li><strong>Right of Access:</strong> Request a copy of the personal data we hold about you.</li>
+        <li><strong>Right to Rectification:</strong> Request correction of inaccurate or incomplete personal records.</li>
+        <li><strong>Right to Erasure ("Right to be Forgotten"):</strong> Request immediate permanent deletion of your account and trading records.</li>
+        <li><strong>Right to Withdraw Consent:</strong> Revoke ad tracking or data consent choices at any time without penalty.</li>
+        <li><strong>Right to Data Portability:</strong> Obtain your virtual profile and trade statistics in a structured format.</li>
+      </ul>
+    </section>
+
+    <!-- 8. California Rights -->
+    <section id="ccpa">
+      <h2>8. California Privacy Rights (CCPA / CPRA)</h2>
+      <p>
+        Under the California Consumer Privacy Act (CCPA) and California Privacy Rights Act (CPRA), California residents are entitled to specific disclosures:
+      </p>
+      <ul>
+        <li><strong>We do NOT sell your personal information:</strong> We have not sold, shared, or rented consumer personal data to any third party for monetary consideration.</li>
+        <li><strong>Right to Know & Delete:</strong> You have the right to request disclosure of categories of personal information collected and request deletion.</li>
+        <li><strong>Non-Discrimination:</strong> We will not discriminate against you in pricing, access, or quality of service for exercising your privacy rights.</li>
+      </ul>
+    </section>
+
+    <!-- 9. Data Retention & Deletion -->
+    <section id="retention">
+      <h2>9. Data Retention & Account Deletion</h2>
+      <p>
+        We retain your virtual profile information only for as long as your account remains active.
+      </p>
+      <div class="sub-card">
+        <h4>🗑️ How to Permanently Delete Your Account</h4>
+        <p>
+          You can permanently delete your account and all associated trading data at any time:
+        </p>
+        <ul style="margin-top: 8px;">
+          <li>Directly inside the app via <strong>Profile → Settings → Delete Account</strong>.</li>
+          <li>Via our online web portal: <a href="delete-account.html">Self-Service Account Deletion Page</a>.</li>
+          <li>By emailing us at <a href="mailto:acadrio.query@gmail.com">acadrio.query@gmail.com</a> with your registered email.</li>
+        </ul>
+        <p style="margin-top: 8px; font-size: 0.85rem; color: var(--text-subtle);">
+          Upon confirmation, all Firebase authentication credentials, trading history, and leaderboard records are wiped permanently within 48 hours.
+        </p>
+      </div>
+    </section>
+
+    <!-- 10. Security -->
+    <section id="security">
+      <h2>10. Data Security & Protection</h2>
+      <p>
+        We employ multi-layer security protections including TLS 1.3 encryption in transit, strict Firebase Firestore security rules, access token validation, and principle of least privilege access to ensure your information is safeguarded against unauthorized modification or disclosure.
+      </p>
+    </section>
+
+    <!-- 11. Children's Privacy -->
+    <section id="children">
+      <h2>11. Children's Privacy</h2>
+      <p>
+        PaperTrading - Crypto &amp; Stocks is not intended for use by children under the age of 13 (or under 16 in the European Union). We do not knowingly collect personal data from minors. If you believe a child has provided us with personal information, please contact us immediately, and we will promptly delete the data.
+      </p>
+    </section>
+
+    <!-- 12. Contact -->
+    <section id="contact">
+      <h2>12. Contact & Data Protection Inquiries</h2>
+      <p>
+        If you have questions, feedback, or requests regarding this Privacy Policy or your personal data rights, please contact our team:
+      </p>
+      <div class="sub-card">
+        <p><strong>Developer:</strong> Acadrio</p>
+        <p><strong>Email Support:</strong> <a href="mailto:acadrio.query@gmail.com">acadrio.query@gmail.com</a></p>
+        <p><strong>Official Inquiries:</strong> <a href="mailto:acadrio.official@gmail.com">acadrio.official@gmail.com</a></p>
+        <p><strong>Response Time:</strong> Within 24–48 business hours</p>
+      </div>
+    </section>
+
+    <!-- Footer -->
     <footer>
-      <p>© 2025 PaperTrading: Crypto. All rights reserved.</p>
+      <p>© 2026 PaperTrading - Crypto &amp; Stocks. All rights reserved.</p>
+      <p style="margin-top: 6px;">
+        <a href="index.html">Privacy Policy</a> •
+        <a href="delete-account.html">Delete Account</a> •
+        <a href="app-ads.txt">app-ads.txt</a>
+      </p>
     </footer>
+
   </div>
 </body>
 </html>

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -7,6 +7,7 @@ import '../../../core/app_theme.dart';
 import '../../../data/community_provider.dart';
 import '../../../data/models.dart';
 import '../../../data/user_provider.dart';
+import '../../../core/avatar_helper.dart';
 
 class CommentsSheet extends ConsumerStatefulWidget {
   final CommunityPost post;
@@ -34,7 +35,7 @@ class _CommentsSheetState extends ConsumerState<CommentsSheet> {
     final authorName = userState.profile.name.isNotEmpty ? userState.profile.name : 'CryptoTrader';
     final authorAvatar = userState.profile.photoUrl.isNotEmpty
         ? userState.profile.photoUrl
-        : 'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Animals/Unicorn.png';
+        : AppAvatarHelper.defaultFallback;
 
     ref.read(communityProvider.notifier).addComment(
           widget.post.id,
@@ -61,7 +62,8 @@ class _CommentsSheetState extends ConsumerState<CommentsSheet> {
   @override
   Widget build(BuildContext context) {
     final communityState = ref.watch(communityProvider);
-    final comments = communityState.commentsByPostId[widget.post.id] ?? [];
+    final rawComments = communityState.commentsByPostId[widget.post.id] ?? [];
+    final comments = rawComments.where((c) => !communityState.blockedUserIds.contains(c.authorId)).toList();
 
     return Container(
       constraints: BoxConstraints(
@@ -84,7 +86,7 @@ class _CommentsSheetState extends ConsumerState<CommentsSheet> {
               Text(
                 'Comments (${comments.length})',
                 style: GoogleFonts.inter(
-                  color: Colors.white,
+                  color: AppColors.textPrimary,
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
                 ),
@@ -98,7 +100,7 @@ class _CommentsSheetState extends ConsumerState<CommentsSheet> {
               ),
             ],
           ),
-          const Divider(color: AppColors.outline),
+          Divider(color: AppColors.outline),
 
           // Comments List
           Expanded(
@@ -123,10 +125,11 @@ class _CommentsSheetState extends ConsumerState<CommentsSheet> {
                       return Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          CircleAvatar(
+                          AppAvatar(
+                            avatarUrl: comment.authorAvatar,
                             radius: 16,
+                            fallbackName: comment.authorName,
                             backgroundColor: AppColors.surfaceAlt,
-                            backgroundImage: NetworkImage(comment.authorAvatar),
                           ),
                           const SizedBox(width: 10),
                           Expanded(
@@ -151,7 +154,7 @@ class _CommentsSheetState extends ConsumerState<CommentsSheet> {
                                               child: Text(
                                                 comment.authorName,
                                                 style: GoogleFonts.inter(
-                                                  color: Colors.white,
+                                                  color: AppColors.textPrimary,
                                                   fontWeight: FontWeight.bold,
                                                   fontSize: 12,
                                                 ),
@@ -182,7 +185,7 @@ class _CommentsSheetState extends ConsumerState<CommentsSheet> {
                                   Text(
                                     comment.text,
                                     style: GoogleFonts.inter(
-                                      color: Colors.white70,
+                                      color: AppColors.textSecondary,
                                       fontSize: 13,
                                     ),
                                   ),
@@ -204,7 +207,7 @@ class _CommentsSheetState extends ConsumerState<CommentsSheet> {
               Expanded(
                 child: TextField(
                   controller: _commentController,
-                  style: GoogleFonts.inter(color: Colors.white, fontSize: 13),
+                  style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 13),
                   decoration: InputDecoration(
                     hintText: 'Add a reply...',
                     contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),

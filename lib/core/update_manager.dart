@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -55,10 +55,10 @@ class InAppUpdateManager {
         return PopScope(
           canPop: !isForceUpdate,
           child: Dialog(
-            backgroundColor: const Color(0xFF161A1E),
+            backgroundColor: AppColors.surface,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
-              side: const BorderSide(color: Color(0xFF2B3139), width: 1),
+              side: BorderSide(color: AppColors.outline, width: 1),
             ),
             child: Padding(
               padding: const EdgeInsets.all(20),
@@ -82,10 +82,10 @@ class InAppUpdateManager {
                   const SizedBox(height: 14),
 
                   // Title
-                  const Text(
+                  Text(
                     'NEW UPDATE AVAILABLE!',
                     style: TextStyle(
-                      color: Colors.white,
+                      color: AppColors.textPrimary,
                       fontWeight: FontWeight.w900,
                       fontSize: 16,
                       letterSpacing: 0.5,
@@ -101,13 +101,13 @@ class InAppUpdateManager {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF1E2329),
+                          color: AppColors.surfaceAlt,
                           borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: const Color(0xFF2B3139)),
+                          border: Border.all(color: AppColors.outline),
                         ),
                         child: Text(
                           'Installed: v$currentVersion',
-                          style: const TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.w600),
+                          style: TextStyle(color: AppColors.subtle, fontSize: 10, fontWeight: FontWeight.w600),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -130,8 +130,8 @@ class InAppUpdateManager {
                   // Update Message
                   Text(
                     updateMessage,
-                    style: const TextStyle(
-                      color: Colors.white70,
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
                       fontSize: 12,
                       height: 1.4,
                     ),
@@ -147,14 +147,14 @@ class InAppUpdateManager {
                           child: OutlinedButton(
                             onPressed: () => Navigator.pop(dialogContext),
                             style: OutlinedButton.styleFrom(
-                              side: const BorderSide(color: Color(0xFF2B3139)),
+                              side: BorderSide(color: AppColors.outline),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                               padding: const EdgeInsets.symmetric(vertical: 12),
                             ),
-                            child: const Text(
+                            child: Text(
                               'LATER',
                               style: TextStyle(
-                                color: Colors.white60,
+                                color: AppColors.subtle,
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
                               ),

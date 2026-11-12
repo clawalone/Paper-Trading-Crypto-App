@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/app_theme.dart';
 import 'news_screen.dart';

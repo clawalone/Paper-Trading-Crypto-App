@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:in_app_review/in_app_review.dart';
@@ -14,24 +14,11 @@ import '../data/user_provider.dart';
 class AppReviewManager {
   static const String _prefKeyHasRated = 'app_review_has_rated';
   static const String _prefKeyLastPromptEpoch = 'app_review_last_prompt_epoch';
-  static const String _prefKeyRewardClaimed = 'app_review_reward_claimed';
 
-  static const double bonusCashReward = 25.0;
-  static const int bonusXpReward = 100;
   static const String feedbackEmail = 'acadrio.official@gmail.com';
 
   static final InAppReview _inAppReview = InAppReview.instance;
   static bool _isDialogShowing = false;
-
-  /// Check if the user has already claimed the review reward
-  static Future<bool> hasClaimedReviewReward() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      return prefs.getBool(_prefKeyRewardClaimed) ?? false;
-    } catch (_) {
-      return false;
-    }
-  }
 
   /// Check if eligible to prompt automatically on a happy moment
   static Future<bool> shouldPromptReview() async {
@@ -91,7 +78,31 @@ class AppReviewManager {
     });
   }
 
-  /// Shows the high-conversion review dialog
+  /// Directly launches the Google Play Store / App Store listing (unbiased)
+  static Future<void> openStoreListing() async {
+    final marketUri = Uri.parse('market://details?id=com.acadriotrade');
+    final webUri = Uri.parse('https://play.google.com/store/apps/details?id=com.acadriotrade');
+
+    try {
+      if (await _inAppReview.isAvailable()) {
+        await _inAppReview.openStoreListing(appStoreId: 'com.acadriotrade');
+        return;
+      }
+    } catch (_) {}
+
+    bool launched = false;
+    try {
+      launched = await launchUrl(marketUri, mode: LaunchMode.externalApplication);
+    } catch (_) {}
+
+    if (!launched) {
+      try {
+        await launchUrl(webUri, mode: LaunchMode.externalApplication);
+      } catch (_) {}
+    }
+  }
+
+  /// Shows the standard, unbiased in-app review prompt (Google Play compliant)
   static Future<void> showReviewDialog(
     BuildContext context,
     WidgetRef ref, {
@@ -103,11 +114,8 @@ class AppReviewManager {
     _isDialogShowing = true;
 
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final bool alreadyClaimed = prefs.getBool(_prefKeyRewardClaimed) ?? false;
       final userState = ref.read(userProvider);
       final currency = userState.profile.preferredCurrency;
-      final formattedReward = CurrencyFormatters.formatUsd(bonusCashReward, currency, decimalDigits: 0);
 
       if (!context.mounted) return;
 
@@ -116,7 +124,7 @@ class AppReviewManager {
         barrierDismissible: true,
         builder: (dialogCtx) {
           return Dialog(
-            backgroundColor: const Color(0xFF1E2329),
+            backgroundColor: AppColors.surface,
             elevation: 24,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(22),
@@ -130,20 +138,13 @@ class AppReviewManager {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Glowing Gold Stars Badge
+                  // Gold Stars Badge
                   Container(
-                    width: 68,
-                    height: 68,
+                    width: 64,
+                    height: 64,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      gradient: LinearGradient(
-                        colors: [
-                          const Color(0xFFF0B90B).withValues(alpha: 0.25),
-                          const Color(0xFFF0B90B).withValues(alpha: 0.05),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
+                      color: const Color(0xFFF0B90B).withValues(alpha: 0.15),
                       border: Border.all(
                         color: const Color(0xFFF0B90B).withValues(alpha: 0.5),
                         width: 1.5,
@@ -153,7 +154,7 @@ class AppReviewManager {
                       child: Icon(
                         Icons.star_rounded,
                         color: Color(0xFFF0B90B),
-                        size: 38,
+                        size: 36,
                       ),
                     ),
                   ),
@@ -200,11 +201,11 @@ class AppReviewManager {
                     ),
 
                   // Title
-                  const Text(
+                  Text(
                     'Enjoying Paper Trading?',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: Colors.white,
+                      color: AppColors.textPrimary,
                       fontSize: 20,
                       fontWeight: FontWeight.w800,
                       letterSpacing: -0.3,
@@ -213,81 +214,36 @@ class AppReviewManager {
                   const SizedBox(height: 8),
 
                   // Description
-                  const Text(
-                    'Your 5-star rating helps other traders find us and keeps our free simulator growing!',
+                  Text(
+                    'Your honest review helps other paper traders discover the app and supports our continuous simulator improvements.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: Colors.white70,
+                      color: AppColors.textSecondary,
                       fontSize: 13,
-                      height: 1.4,
+                      height: 1.45,
                     ),
                   ),
-                  const SizedBox(height: 16),
-
-                  // Reward Callout Card (if bonus not yet claimed)
-                  if (!alreadyClaimed)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF14171A),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: const Color(0xFFF0B90B).withValues(alpha: 0.3),
-                          width: 1,
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF0B90B).withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Icon(
-                              Icons.card_giftcard_rounded,
-                              color: Color(0xFFF0B90B),
-                              size: 18,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Rating Reward Bonus',
-                                  style: TextStyle(
-                                    color: Color(0xFFF0B90B),
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                Text(
-                                  '+$formattedReward Cash & +$bonusXpReward XP',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
                   const SizedBox(height: 20),
 
-                  // ─── ACTION BUTTONS ───
-                  // Button 1: "Loving it! Rate on Google Play"
+                  // Action Button 1: Rate on Google Play (or in-app review API)
                   SizedBox(
                     width: double.infinity,
                     height: 48,
                     child: ElevatedButton.icon(
                       onPressed: () async {
                         Navigator.pop(dialogCtx);
-                        await _handlePositiveRating(context, ref, alreadyClaimed, formattedReward);
+                        final prefs = await SharedPreferences.getInstance();
+                        await prefs.setBool(_prefKeyHasRated, true);
+
+                        // Try native in-app review sheet first, fallback to store listing
+                        try {
+                          if (await _inAppReview.isAvailable()) {
+                            await _inAppReview.requestReview();
+                            return;
+                          }
+                        } catch (_) {}
+
+                        await openStoreListing();
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFFF0B90B),
@@ -297,9 +253,9 @@ class AppReviewManager {
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      icon: const Icon(Icons.thumb_up_rounded, size: 18, color: Colors.black),
+                      icon: const Icon(Icons.star_rounded, size: 20, color: Colors.black),
                       label: const Text(
-                        'Loving it! Rate on Play Store ⭐',
+                        'Rate on Google Play',
                         style: TextStyle(
                           fontSize: 14.5,
                           fontWeight: FontWeight.w800,
@@ -310,7 +266,7 @@ class AppReviewManager {
                   ),
                   const SizedBox(height: 10),
 
-                  // Button 2: "Could be better" (Sends private email to keep 1-stars off the store)
+                  // Action Button 2: Send Feedback / Contact Support
                   SizedBox(
                     width: double.infinity,
                     height: 44,
@@ -320,25 +276,25 @@ class AppReviewManager {
                         await _handleConstructiveFeedback(context);
                       },
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white70,
-                        side: const BorderSide(color: Color(0xFF2B3139), width: 1.2),
+                        foregroundColor: AppColors.textPrimary,
+                        side: BorderSide(color: AppColors.outline, width: 1.2),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      icon: const Icon(Icons.chat_bubble_outline_rounded, size: 16, color: Colors.white60),
-                      label: const Text(
-                        'Could be better 💬',
+                      icon: Icon(Icons.mail_outline_rounded, size: 16, color: AppColors.textSecondary),
+                      label: Text(
+                        'Send Feedback or Report Bug',
                         style: TextStyle(
-                          fontSize: 13.5,
+                          fontSize: 13,
                           fontWeight: FontWeight.w600,
-                          color: Colors.white70,
+                          color: AppColors.textPrimary,
                         ),
                       ),
                     ),
                   ),
 
-                  // Button 3: Maybe Later
+                  // Action Button 3: Maybe Later
                   if (!isFromProfile) ...[
                     const SizedBox(height: 4),
                     TextButton(
@@ -347,11 +303,11 @@ class AppReviewManager {
                         final p = await SharedPreferences.getInstance();
                         await p.setInt(_prefKeyLastPromptEpoch, DateTime.now().millisecondsSinceEpoch);
                       },
-                      child: const Text(
+                      child: Text(
                         'Maybe Later',
                         style: TextStyle(
-                          color: Colors.white38,
-                          fontSize: 12.5,
+                          color: AppColors.textSecondary,
+                          fontSize: 13,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -368,87 +324,7 @@ class AppReviewManager {
     }
   }
 
-  /// Handles 5-star positive review by navigating to Google Play Store listing
-  static Future<void> _handlePositiveRating(
-    BuildContext context,
-    WidgetRef ref,
-    bool alreadyClaimed,
-    String formattedReward,
-  ) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool(_prefKeyHasRated, true);
-
-      // Directly open the Google Play Store directly to reviews
-      final marketUri = Uri.parse('market://details?id=com.acadriotrade&showAllReviews=true');
-      final webUri = Uri.parse('https://play.google.com/store/apps/details?id=com.acadriotrade&showAllReviews=true');
-
-      bool launched = false;
-      try {
-        launched = await launchUrl(marketUri, mode: LaunchMode.externalApplication);
-      } catch (_) {}
-
-      if (!launched) {
-        try {
-          if (await canLaunchUrl(marketUri)) {
-            launched = await launchUrl(marketUri, mode: LaunchMode.externalNonBrowserApplication);
-          }
-        } catch (_) {}
-      }
-
-      if (!launched) {
-        try {
-          launched = await launchUrl(webUri, mode: LaunchMode.externalApplication);
-        } catch (_) {}
-      }
-
-      if (!launched) {
-        try {
-          await _inAppReview.openStoreListing(appStoreId: 'com.acadriotrade');
-        } catch (_) {}
-      }
-
-      // Claim one-time reward if not yet claimed
-      if (!alreadyClaimed) {
-        await prefs.setBool(_prefKeyRewardClaimed, true);
-        ref.read(userProvider.notifier).claimReviewReward(
-          amount: bonusCashReward,
-          xp: bonusXpReward,
-        );
-
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              backgroundColor: const Color(0xFF1E2329),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: const BorderSide(color: Color(0xFFF0B90B), width: 1),
-              ),
-              content: Row(
-                children: [
-                  const Text('🎉', style: TextStyle(fontSize: 18)),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Thank you for your rating! +$formattedReward Cash & +$bonusXpReward XP added!',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              behavior: SnackBarBehavior.floating,
-              duration: const Duration(seconds: 4),
-            ),
-          );
-        }
-      }
-    } catch (_) {}
-  }
-
-  /// Handles constructive negative feedback privately via email
+  /// Handles constructive user feedback privately via email
   static Future<void> _handleConstructiveFeedback(BuildContext context) async {
     final user = FirebaseAuth.instance.currentUser;
     final uid = user?.uid ?? 'Unknown';
@@ -456,7 +332,7 @@ class AppReviewManager {
     const subject = '[Trader Feedback] Improvement Suggestions';
     final body =
         'Hi Acadrio Team,\n\n'
-        'Here are a few suggestions to improve Paper Trading - Crypto:\n\n'
+        'Here are a few suggestions to improve PaperTrading - Crypto & Stocks:\n\n'
         '1. What could be improved?\n'
         '[Enter your feedback here]\n\n'
         '2. Features you would like to see:\n'
@@ -482,11 +358,11 @@ class AppReviewManager {
       await Clipboard.setData(const ClipboardData(text: feedbackEmail));
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            backgroundColor: Color(0xFF1E2329),
+          SnackBar(
+            backgroundColor: AppColors.surface,
             content: Text(
               'Thank you! Support email copied: acadrio.official@gmail.com',
-              style: TextStyle(color: Colors.white),
+              style: TextStyle(color: AppColors.textPrimary),
             ),
             behavior: SnackBarBehavior.floating,
           ),

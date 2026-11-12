@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:stock_arena/core/app_theme.dart';
 import 'package:stock_arena/core/currency_formatters.dart';
 import 'package:stock_arena/core/trading_view_chart.dart';
 import 'package:stock_arena/data/community_provider.dart';
@@ -10,6 +12,7 @@ import 'package:stock_arena/data/user_provider.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  GoogleFonts.config.allowRuntimeFetching = false;
 
   group('Startup & Currency Resilience', () {
     test('CurrencyFormatters formats without awaiting live exchange rate', () {
@@ -304,6 +307,51 @@ void main() {
       expect(eligibleWinners[1]['name'], equals('BullKing'));
       expect(eligibleWinners[2]['name'], equals('BreakoutPro'));
       expect(eligibleWinners.any((p) => (p['tournamentScore'] as num) <= 0.0), isFalse);
+    });
+  });
+
+  group('Dark, Light, and System Theme Support', () {
+    test('AppTheme palettes define distinct colors for dark and light modes', () {
+      expect(AppColors.darkBackground, isNot(equals(AppColors.lightBackground)));
+      expect(AppColors.darkSurface, isNot(equals(AppColors.lightSurface)));
+      expect(AppColors.darkText, isNot(equals(AppColors.lightText)));
+      expect(AppColors.darkOutline, isNot(equals(AppColors.lightOutline)));
+    });
+
+    test('AppColors dynamically reflects dark and light modes', () {
+      AppColors.isDarkMode = true;
+      expect(AppColors.background, equals(AppColors.darkBackground));
+      expect(AppColors.surface, equals(AppColors.darkSurface));
+      expect(AppColors.textPrimary, equals(AppColors.darkText));
+
+      AppColors.isDarkMode = false;
+      expect(AppColors.background, equals(AppColors.lightBackground));
+      expect(AppColors.surface, equals(AppColors.lightSurface));
+      expect(AppColors.textPrimary, equals(AppColors.lightText));
+
+      // Reset to dark
+      AppColors.isDarkMode = true;
+    });
+
+    test('UserProfile defaults to Dark theme and serializes themeMode correctly', () {
+      const profile = UserProfile(
+        name: 'Test',
+        experienceLevel: 'Beginner',
+        virtualBalance: 10000.0,
+        xp: 0,
+        streak: 1,
+        watchlist: {},
+      );
+      expect(profile.themeMode, equals('Dark'));
+
+      final updated = profile.copyWith(themeMode: 'Light');
+      expect(updated.themeMode, equals('Light'));
+
+      final json = updated.toJson();
+      expect(json['themeMode'], equals('Light'));
+
+      final fromJson = UserProfile.fromJson(json);
+      expect(fromJson.themeMode, equals('Light'));
     });
   });
 }

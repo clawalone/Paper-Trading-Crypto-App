@@ -1,7 +1,9 @@
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/app_theme.dart';
+import '../../../core/avatar_helper.dart';
 import '../../community/widgets/user_profile_modal.dart';
 
 class TraderRegistrationEntry {
@@ -47,6 +49,7 @@ class PastSevenDaysMetricsSheet extends StatefulWidget {
   final int newTradersToday;
   final int newTradersWeek;
   final List<DayRegistrationSummary> pastSevenDays;
+  final List<TraderRegistrationEntry>? allTraders;
   final String initialMode; // 'total', 'today', 'week'
 
   const PastSevenDaysMetricsSheet({
@@ -55,6 +58,7 @@ class PastSevenDaysMetricsSheet extends StatefulWidget {
     required this.newTradersToday,
     required this.newTradersWeek,
     required this.pastSevenDays,
+    this.allTraders,
     this.initialMode = 'today',
   });
 
@@ -87,7 +91,9 @@ class _PastSevenDaysMetricsSheetState extends State<PastSevenDaysMetricsSheet> {
 
   List<TraderRegistrationEntry> get _filteredEntries {
     List<TraderRegistrationEntry> source;
-    if (_selectedDayIndex == -1) {
+    if (_selectedMode == 'total') {
+      source = widget.allTraders ?? widget.pastSevenDays.expand((d) => d.entries).toList();
+    } else if (_selectedDayIndex == -1) {
       source = widget.pastSevenDays.expand((d) => d.entries).toList();
     } else if (_selectedDayIndex >= 0 && _selectedDayIndex < widget.pastSevenDays.length) {
       source = widget.pastSevenDays[_selectedDayIndex].entries;
@@ -141,6 +147,7 @@ class _PastSevenDaysMetricsSheetState extends State<PastSevenDaysMetricsSheet> {
         color: Color(0xFF121519),
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
+      clipBehavior: Clip.antiAlias,
       child: SafeArea(
         top: false,
         child: Column(
@@ -186,11 +193,13 @@ class _PastSevenDaysMetricsSheetState extends State<PastSevenDaysMetricsSheet> {
                           ),
                         ),
                         Text(
-                          _selectedDayIndex == 0
-                              ? "Showing today's new calendar entries"
-                              : _selectedDayIndex == -1
-                                  ? 'Breakdown of last 7 calendar days'
-                                  : 'Filtered for ${widget.pastSevenDays[_selectedDayIndex].label}',
+                          _selectedMode == 'total'
+                              ? 'Showing all registered traders'
+                              : _selectedDayIndex == 0
+                                  ? "Showing today's new calendar entries"
+                                  : _selectedDayIndex == -1
+                                      ? 'Breakdown of last 7 calendar days'
+                                      : 'Filtered for ${widget.pastSevenDays[_selectedDayIndex].label}',
                           style: const TextStyle(
                             color: Colors.white54,
                             fontSize: 12,
@@ -486,11 +495,15 @@ class _PastSevenDaysMetricsSheetState extends State<PastSevenDaysMetricsSheet> {
                   Row(
                     children: [
                       Text(
-                        _selectedDayIndex == -1
-                            ? 'New Traders (Past 7 Days)'
-                            : _selectedDayIndex == 0
-                                ? "Today's New Entries"
-                                : "Registered on ${widget.pastSevenDays[_selectedDayIndex].label}",
+                        _selectedMode == 'total'
+                            ? 'All Registered Traders'
+                            : _selectedDayIndex == -1
+                                ? 'New Traders (Past 7 Days)'
+                                : _selectedDayIndex == 0
+                                    ? "Today's New Entries"
+                                    : (_selectedDayIndex >= 0 && _selectedDayIndex < widget.pastSevenDays.length
+                                        ? "Registered on ${widget.pastSevenDays[_selectedDayIndex].label}"
+                                        : "New Traders"),
                         style: const TextStyle(
                           color: Colors.white70,
                           fontSize: 12.5,
@@ -562,65 +575,65 @@ class _PastSevenDaysMetricsSheetState extends State<PastSevenDaysMetricsSheet> {
     required bool isSelected,
     required VoidCallback onTap,
   }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-          decoration: BoxDecoration(
-            color: isSelected ? const Color(0xFF1E242B) : const Color(0xFF14171A),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isSelected ? iconColor : const Color(0xFF2B3139),
-              width: isSelected ? 1.5 : 1,
-            ),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF1E242B) : const Color(0xFF14171A),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? iconColor : const Color(0xFF2B3139),
+            width: isSelected ? 1.5 : 1,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(icon, size: 13, color: iconColor),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      label,
-                      style: TextStyle(
-                        color: isSelected ? Colors.white : Colors.white60,
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 13, color: iconColor),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      color: isSelected ? Colors.white : Colors.white60,
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ],
-              ),
-              const SizedBox(height: 5),
-              Text(
-                value,
-                style: TextStyle(
-                  color: isSelected ? iconColor : Colors.white,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -0.3,
                 ),
+              ],
+            ),
+            const SizedBox(height: 5),
+            Text(
+              value,
+              style: TextStyle(
+                color: isSelected ? iconColor : Colors.white,
+                fontSize: 17,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.3,
               ),
-              const SizedBox(height: 2),
-              Text(
-                subtext,
-                style: const TextStyle(
-                  color: Colors.white38,
-                  fontSize: 9.5,
-                  fontWeight: FontWeight.w500,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 2),
+            Text(
+              subtext,
+              style: const TextStyle(
+                color: Colors.white38,
+                fontSize: 9.5,
+                fontWeight: FontWeight.w500,
               ),
-            ],
-          ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
         ),
       ),
     );
@@ -631,9 +644,12 @@ class _PastSevenDaysMetricsSheetState extends State<PastSevenDaysMetricsSheet> {
     required bool isSelected,
     required VoidCallback onTap,
   }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
@@ -676,99 +692,99 @@ class _PastSevenDaysMetricsSheetState extends State<PastSevenDaysMetricsSheet> {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: const Color(0xFF242B33)),
       ),
-      child: ListTile(
-        dense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-        onTap: () => _openProfile(entry),
-        leading: Container(
-          width: 38,
-          height: 38,
-          decoration: BoxDecoration(
-            color: const Color(0xFF1E2329),
-            shape: BoxShape.circle,
-            border: Border.all(color: AppColors.outline, width: 1),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          HapticFeedback.selectionClick();
+          _openProfile(entry);
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            children: [
+              AppAvatar(
+                avatarUrl: avatarUrl,
+                size: 38,
+                fallbackName: entry.name,
+                backgroundColor: const Color(0xFF1E2329),
+                border: Border.all(color: AppColors.outline, width: 1),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            entry.name.isNotEmpty ? entry.name : 'Anonymous Trader',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (isToday) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                            decoration: BoxDecoration(
+                              color: AppColors.profit.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              'NEW',
+                              style: TextStyle(
+                                color: AppColors.profit,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 9,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    if (entry.email.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        entry.email,
+                        style: const TextStyle(color: Colors.white38, fontSize: 11),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        const Icon(Icons.access_time_rounded, size: 11, color: Colors.white38),
+                        const SizedBox(width: 4),
+                        Text(
+                          timeStr,
+                          style: const TextStyle(color: Colors.white54, fontSize: 10.5),
+                        ),
+                        const Spacer(),
+                        Text(
+                          currencyFormatter.format(entry.virtualBalance),
+                          style: const TextStyle(
+                            color: AppColors.primary,
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white30, size: 12),
+            ],
           ),
-          padding: const EdgeInsets.all(2),
-          child: ClipOval(
-            child: Image.network(
-              avatarUrl,
-              fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) => Center(
-                child: Text(
-                  entry.name.isNotEmpty ? entry.name[0].toUpperCase() : 'T',
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
-                ),
-              ),
-            ),
-          ),
         ),
-        title: Row(
-          children: [
-            Expanded(
-              child: Text(
-                entry.name.isNotEmpty ? entry.name : 'Anonymous Trader',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            if (isToday)
-              Container(
-                margin: const EdgeInsets.only(left: 6),
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                decoration: BoxDecoration(
-                  color: AppColors.profit.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: const Text(
-                  'NEW',
-                  style: TextStyle(
-                    color: AppColors.profit,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 9,
-                  ),
-                ),
-              ),
-          ],
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 2),
-            if (entry.email.isNotEmpty)
-              Text(
-                entry.email,
-                style: const TextStyle(color: Colors.white38, fontSize: 11),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            const SizedBox(height: 3),
-            Row(
-              children: [
-                const Icon(Icons.access_time_rounded, size: 11, color: Colors.white38),
-                const SizedBox(width: 4),
-                Text(
-                  timeStr,
-                  style: const TextStyle(color: Colors.white54, fontSize: 10.5),
-                ),
-                const Spacer(),
-                Text(
-                  currencyFormatter.format(entry.virtualBalance),
-                  style: const TextStyle(
-                    color: AppColors.primary,
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-        trailing: const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white30, size: 12),
       ),
     );
   }

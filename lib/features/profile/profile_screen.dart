@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart' hide Badge;
+import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/services.dart';
@@ -16,28 +17,27 @@ import '../../data/models.dart';
 import 'request_money_screen.dart';
 import 'admin_panel_screen.dart';
 import 'terms_screen.dart';
+import 'privacy_policy_screen.dart';
 import 'how_it_works_screen.dart';
 import 'wallet_screen.dart';
 import 'feature_request_screen.dart';
+import '../../core/avatar_helper.dart';
+import '../../core/app_lock_manager.dart';
+import 'security_settings_sheet.dart';
+import 'widgets/language_selection_dialog.dart';
+import 'widgets/theme_selection_dialog.dart';
+import 'widgets/edit_profile_sheet.dart';
+import '../../core/app_translations.dart';
+import '../../l10n/app_localizations.dart';
 
-const _avatars = [
-  'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Animals/Cat.png',
-  'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Animals/Dog%20Face.png',
-  'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Animals/Fox.png',
-  'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Animals/Bear.png',
-  'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Animals/Panda.png',
-  'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Animals/Rabbit%20Face.png',
-  'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Animals/Tiger%20Face.png',
-  'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Animals/Lion.png',
-  'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Animals/Monkey%20Face.png',
-  'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Animals/Unicorn.png'
-];
+final List<String> _avatars = AppAvatarHelper.localAvatars;
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
     final userState = ref.watch(userProvider);
     final marketState = ref.watch(marketProvider);
     final user = FirebaseAuth.instance.currentUser;
@@ -80,7 +80,7 @@ class ProfileScreen extends ConsumerWidget {
         backgroundColor: AppColors.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: Icon(Icons.arrow_back, color: AppColors.textPrimary),
           onPressed: () => Navigator.pop(context),
         ),
         // actions removed per user request
@@ -97,14 +97,14 @@ class ProfileScreen extends ConsumerWidget {
                   onTap: () {
                     showModalBottomSheet(
                       context: context,
-                      backgroundColor: const Color(0xFF1E2329),
+                      backgroundColor: AppColors.surface,
                       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
                       builder: (context) => Padding(
                         padding: const EdgeInsets.all(24),
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Text('Choose Avatar', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
+                            Text('Choose Avatar', style: TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.w800)),
                             const SizedBox(height: 20),
                             Wrap(
                               spacing: 16,
@@ -119,12 +119,15 @@ class ProfileScreen extends ConsumerWidget {
                                   width: 60,
                                   height: 60,
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF2B3139),
+                                    color: AppColors.surfaceAlt,
                                     shape: BoxShape.circle,
-                                    border: userState.profile.photoUrl == url ? Border.all(color: AppColors.primary, width: 2) : null,
+                                    border: (AppAvatarHelper.getLocalAsset(userState.profile.photoUrl) == url || userState.profile.photoUrl == url)
+                                        ? Border.all(color: AppColors.primary, width: 2)
+                                        : null,
                                   ),
-                                  child: ClipOval(
-                                    child: Image.network(url, fit: BoxFit.cover),
+                                  child: AppAvatar(
+                                    avatarUrl: url,
+                                    size: 60,
                                   ),
                                 ),
                               )).toList(),
@@ -136,27 +139,11 @@ class ProfileScreen extends ConsumerWidget {
                   },
                   child: Stack(
                     children: [
-                      Container(
-                        width: 64,
-                        height: 64,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFF1E2329),
-                          shape: BoxShape.circle,
-                        ),
-                        child: userState.profile.photoUrl.isNotEmpty
-                            ? ClipOval(child: Image.network(userState.profile.photoUrl, fit: BoxFit.cover))
-                            : Center(
-                                child: Text(
-                                  userState.profile.name.isNotEmpty
-                                      ? userState.profile.name[0].toUpperCase()
-                                      : 'U',
-                                  style: const TextStyle(
-                                    color: AppColors.primary,
-                                    fontSize: 28,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
+                      AppAvatar(
+                        avatarUrl: userState.profile.photoUrl,
+                        size: 64,
+                        fallbackName: userState.profile.name,
+                        backgroundColor: AppColors.surfaceAlt,
                       ),
                       Positioned(
                         right: 0,
@@ -181,15 +168,27 @@ class ProfileScreen extends ConsumerWidget {
                       Row(
                         children: [
                           Flexible(
-                            child: Text(
-                              userState.profile.name,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 22,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: -0.5,
+                            child: GestureDetector(
+                              onTap: () => _showEditProfileModal(context, ref, userState),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      userState.profile.name,
+                                      style: TextStyle(
+                                        color: AppColors.textPrimary,
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: -0.5,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Icon(Icons.edit_outlined, size: 16, color: AppColors.textSecondary),
+                                ],
                               ),
-                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           if (isVerified) ...[
@@ -231,7 +230,183 @@ class ProfileScreen extends ConsumerWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 14),
+
+            // ── BIO CARD ──────────────────────────────────────────────────────
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.outline),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'TRADER BIO',
+                          style: GoogleFonts.inter(
+                            color: AppColors.textMuted,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          userState.profile.bio.isNotEmpty
+                              ? userState.profile.bio
+                              : 'No bio added yet. Tap Edit to set your strategy bio & showcase badge.',
+                          style: GoogleFonts.inter(
+                            color: userState.profile.bio.isNotEmpty
+                                ? AppColors.textPrimary
+                                : AppColors.textMuted,
+                            fontSize: 13,
+                            height: 1.35,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: () => _showEditProfileModal(context, ref, userState),
+                    child: Container(
+                      padding: const EdgeInsets.all(7),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceAlt,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.edit_note_rounded, size: 18, color: AppColors.primary),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+
+            // ── SHOWCASE BADGE CARD ───────────────────────────────────────────
+            Builder(
+              builder: (context) {
+                final featuredId = userState.profile.featuredBadgeId;
+                final featuredBadge = featuredId != null && featuredId.isNotEmpty
+                    ? ALL_BADGES.cast<Badge?>().firstWhere(
+                        (b) => b?.id == featuredId,
+                        orElse: () => null,
+                      )
+                    : null;
+                final isStockBadge = featuredBadge?.id.startsWith('b_stock') ?? false;
+
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: featuredBadge != null
+                          ? (isStockBadge ? const Color(0xFF3B82F6).withValues(alpha: 0.4) : AppColors.primary.withValues(alpha: 0.4))
+                          : AppColors.outline,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: featuredBadge != null
+                              ? (isStockBadge ? const Color(0xFF1E3A8A).withValues(alpha: 0.4) : const Color(0xFF854D0E).withValues(alpha: 0.4))
+                              : AppColors.surfaceAlt,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: featuredBadge != null
+                                ? (isStockBadge ? const Color(0xFF3B82F6).withValues(alpha: 0.5) : AppColors.primary.withValues(alpha: 0.5))
+                                : Colors.transparent,
+                            width: 0.8,
+                          ),
+                        ),
+                        child: Center(
+                          child: Text(
+                            featuredBadge?.icon ?? '🎖️',
+                            style: const TextStyle(fontSize: 19),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  'FEATURED SHOWCASE BADGE',
+                                  style: GoogleFonts.inter(
+                                    color: AppColors.textMuted,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                if (featuredBadge != null)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: isStockBadge
+                                          ? const Color(0xFF3B82F6).withValues(alpha: 0.15)
+                                          : const Color(0xFFF0B90B).withValues(alpha: 0.15),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      isStockBadge ? '📈 Stock' : '🪙 Crypto',
+                                      style: GoogleFonts.inter(
+                                        color: isStockBadge ? const Color(0xFF60A5FA) : const Color(0xFFF0B90B),
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              featuredBadge?.title ?? 'None selected (Tap to pick)',
+                              style: GoogleFonts.inter(
+                                color: featuredBadge != null ? AppColors.textPrimary : AppColors.textMuted,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => _showEditProfileModal(context, ref, userState),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: Text(
+                          featuredBadge != null ? 'Change' : 'Pick Badge',
+                          style: GoogleFonts.inter(
+                            color: AppColors.primary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 20),
 
             // ── STATS CARDS ──────────────────────────────────────────────────
             Row(
@@ -294,8 +469,8 @@ class ProfileScreen extends ConsumerWidget {
             ),
             _MenuTile(
               icon: Icons.add_card_rounded,
-              title: 'Buy Virtual Funds',
-              subtitle: 'Top-up balance with UPI / Cards',
+              title: 'Top Up Virtual Capital',
+              subtitle: 'Capital packages via Google Play',
               onTap: () {
                 Navigator.push(context, MaterialPageRoute(builder: (_) => const RequestMoneyScreen()));
               },
@@ -307,9 +482,9 @@ class ProfileScreen extends ConsumerWidget {
               onTap: () => _handleReportBug(context, userState),
             ),
             const SizedBox(height: 24),
-            const Text(
-              'Preferences',
-              style: TextStyle(
+            Text(
+              'Preferences'.tr(),
+              style: const TextStyle(
                 color: Color(0xFF4B5563),
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
@@ -319,33 +494,16 @@ class ProfileScreen extends ConsumerWidget {
             const SizedBox(height: 8),
             _MenuTile(
               icon: Icons.language,
-              title: 'Language',
+              title: l10n?.language ?? 'Language',
               trailingText: userState.profile.preferredLanguage,
-              onTap: () {
-                showDialog(
-                  context: context,
-                  builder: (ctx) => SimpleDialog(
-                    backgroundColor: const Color(0xFF1E2329),
-                    title: const Text('Select Language', style: TextStyle(color: Colors.white)),
-                    children: ['English', 'Hindi', 'Spanish'].map((lang) {
-                      return SimpleDialogOption(
-                        onPressed: () {
-                          ref.read(userProvider.notifier).updateProfileSettings(language: lang);
-                          Navigator.pop(ctx);
-                        },
-                        child: Text(lang, style: const TextStyle(color: Colors.white70)),
-                      );
-                    }).toList(),
-                  ),
-                );
-              },
+              onTap: () => LanguageSelectionDialog.show(context, ref),
             ),
             Builder(
               builder: (ctx) {
                 final currInfo = CurrencyFormatters.getInfo(userState.profile.preferredCurrency);
                 return _MenuTile(
                   icon: Icons.attach_money,
-                  title: 'Currency',
+                  title: l10n?.currency ?? 'Currency',
                   trailingText: '${currInfo.flag} ${currInfo.code} (${currInfo.symbol})',
                   onTap: () {
                     CurrencyPicker.show(
@@ -360,33 +518,52 @@ class ProfileScreen extends ConsumerWidget {
               },
             ),
             _MenuTile(
-              icon: Icons.dark_mode_outlined,
-              title: 'Theme',
+              icon: userState.profile.themeMode == 'Light'
+                  ? Icons.light_mode_outlined
+                  : (userState.profile.themeMode == 'System'
+                      ? Icons.settings_brightness_outlined
+                      : Icons.dark_mode_outlined),
+              title: l10n?.theme ?? 'Theme',
               trailingText: userState.profile.themeMode,
-              onTap: () {
-                showDialog(
-                  context: context,
-                  builder: (ctx) => SimpleDialog(
-                    backgroundColor: const Color(0xFF1E2329),
-                    title: const Text('Select Theme', style: TextStyle(color: Colors.white)),
-                    children: ['Dark', 'Light', 'System'].map((t) {
-                      return SimpleDialogOption(
-                        onPressed: () {
-                          ref.read(userProvider.notifier).updateProfileSettings(themeMode: t);
-                          Navigator.pop(ctx);
-                        },
-                        child: Text(t, style: const TextStyle(color: Colors.white70)),
-                      );
-                    }).toList(),
-                  ),
+              onTap: () => ThemeSelectionDialog.show(context, ref),
+            ),
+
+            const SizedBox(height: 24),
+            Text(
+              l10n?.security ?? 'Security',
+              style: const TextStyle(
+                color: Color(0xFF4B5563),
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.5,
+              ),
+            ),
+            const SizedBox(height: 8),
+            ListenableBuilder(
+              listenable: AppLockManager.instance,
+              builder: (context, _) {
+                final isEnabled = AppLockManager.instance.isEnabled;
+                return _MenuTile(
+                  icon: Icons.lock_outline_rounded,
+                  iconColor: isEnabled ? const Color(0xFF1D9BF0) : null,
+                  title: 'App Lock & Biometrics',
+                  subtitle: isEnabled
+                      ? (AppLockManager.instance.isBiometricsEnabled
+                          ? 'PIN & Biometrics active'
+                          : '4-digit PIN active')
+                      : 'Lock app with 4-digit PIN & biometrics',
+                  trailingText: isEnabled ? 'On' : 'Off',
+                  onTap: () {
+                    SecuritySettingsSheet.show(context);
+                  },
                 );
               },
             ),
 
             const SizedBox(height: 24),
-            const Text(
-              'Legal & Help',
-              style: TextStyle(
+            Text(
+              'Legal & Help'.tr(),
+              style: const TextStyle(
                 color: Colors.white54,
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
@@ -398,33 +575,7 @@ class ProfileScreen extends ConsumerWidget {
               icon: Icons.star_rounded,
               iconColor: const Color(0xFFF0B90B),
               title: 'Rate on Google Play',
-              subtitle: 'Share your review & claim +\$25 cash bonus',
-              trailingWidget: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF0B90B).withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(
-                    color: const Color(0xFFF0B90B).withValues(alpha: 0.4),
-                    width: 0.8,
-                  ),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.card_giftcard_rounded, color: Color(0xFFF0B90B), size: 12),
-                    SizedBox(width: 4),
-                    Text(
-                      '+\$25',
-                      style: TextStyle(
-                        color: Color(0xFFF0B90B),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              subtitle: 'Share your genuine review & feedback',
               onTap: () {
                 AppReviewManager.showReviewDialog(
                   context,
@@ -451,10 +602,18 @@ class ProfileScreen extends ConsumerWidget {
             ),
             _MenuTile(
               icon: Icons.gavel,
-              title: 'Terms & Conditions',
-              subtitle: 'Legal disclaimers & rules',
+              title: l10n?.termsOfService ?? 'Terms & Conditions',
+              subtitle: 'Legal disclaimers & simulation rules',
               onTap: () {
                 Navigator.push(context, MaterialPageRoute(builder: (_) => const TermsScreen()));
+              },
+            ),
+            _MenuTile(
+              icon: Icons.privacy_tip_outlined,
+              title: l10n?.privacyPolicy ?? 'Privacy Policy',
+              subtitle: 'Data usage, retention & protection',
+              onTap: () {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const PrivacyPolicyScreen()));
               },
             ),
 
@@ -476,9 +635,9 @@ class ProfileScreen extends ConsumerWidget {
                   Navigator.pop(context);
                 }
               },
-              child: const Text(
-                'Log Out',
-                style: TextStyle(
+              child: Text(
+                l10n?.logout ?? 'Log Out',
+                style: const TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
                 ),
@@ -494,22 +653,22 @@ class ProfileScreen extends ConsumerWidget {
                 final confirm = await showDialog<bool>(
                   context: context,
                   builder: (ctx) => AlertDialog(
-                    backgroundColor: const Color(0xFF1E2329),
-                    title: const Row(
+                    backgroundColor: AppColors.surface,
+                    title: Row(
                       children: [
-                        Icon(Icons.warning_rounded, color: AppColors.loss),
-                        SizedBox(width: 8),
-                        Text('Delete Account', style: TextStyle(color: Colors.white)),
+                        const Icon(Icons.warning_rounded, color: AppColors.loss),
+                        const SizedBox(width: 8),
+                        Text('Delete Account', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
                       ],
                     ),
-                    content: const Text(
+                    content: Text(
                       'Are you sure you want to permanently delete your account? All your stats, balances, and history will be lost. This action cannot be undone.',
-                      style: TextStyle(color: Colors.white70),
+                      style: TextStyle(color: AppColors.textSecondary),
                     ),
                     actions: [
                       TextButton(
                         onPressed: () => Navigator.pop(ctx, false),
-                        child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+                        child: Text('Cancel', style: TextStyle(color: AppColors.subtle)),
                       ),
                       FilledButton(
                         onPressed: () => Navigator.pop(ctx, true),
@@ -569,7 +728,7 @@ class ProfileScreen extends ConsumerWidget {
         ? userState.profile.name
         : 'Trader';
 
-    const subject = '[Bug Report] Paper Trading - Crypto';
+    const subject = '[Bug Report] PaperTrading - Crypto & Stocks';
     final body =
         'Hi Acadrio Team,\n\n'
         'I would like to report an issue encountered in the app.\n\n'
@@ -619,6 +778,10 @@ class ProfileScreen extends ConsumerWidget {
       }
     }
   }
+
+  void _showEditProfileModal(BuildContext context, WidgetRef ref, UserState userState) {
+    EditProfileSheet.show(context, ref, userState);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -644,9 +807,9 @@ class _MiniStatCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF141A21),
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFF2B3139)),
+        border: Border.all(color: AppColors.outline),
       ),
       child: Row(
         children: [
@@ -664,9 +827,9 @@ class _MiniStatCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  title,
-                  style: const TextStyle(
-                    color: Color(0xFF6B7280),
+                  title.tr(),
+                  style: TextStyle(
+                    color: AppColors.subtle,
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
                   ),
@@ -674,8 +837,8 @@ class _MiniStatCard extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   value,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
                   ),
@@ -700,7 +863,6 @@ class _MenuTile extends StatelessWidget {
   final String title;
   final String? subtitle;
   final String? trailingText;
-  final Widget? trailingWidget;
   final VoidCallback onTap;
 
   const _MenuTile({
@@ -709,7 +871,6 @@ class _MenuTile extends StatelessWidget {
     required this.title,
     this.subtitle,
     this.trailingText,
-    this.trailingWidget,
     required this.onTap,
   });
 
@@ -717,22 +878,22 @@ class _MenuTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      splashColor: Colors.white.withValues(alpha: 0.03),
-      highlightColor: Colors.white.withValues(alpha: 0.01),
+      splashColor: AppColors.primary.withValues(alpha: 0.05),
+      highlightColor: AppColors.primary.withValues(alpha: 0.02),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 14),
         child: Row(
           children: [
-            Icon(icon, color: iconColor ?? const Color(0xFF6B7280), size: 22),
+            Icon(icon, color: iconColor ?? AppColors.subtle, size: 22),
             const SizedBox(width: 16),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    title,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    title.tr(),
+                    style: TextStyle(
+                      color: AppColors.textPrimary,
                       fontSize: 15,
                       fontWeight: FontWeight.w500,
                     ),
@@ -740,9 +901,9 @@ class _MenuTile extends StatelessWidget {
                   if (subtitle != null) ...[
                     const SizedBox(height: 2),
                     Text(
-                      subtitle!,
-                      style: const TextStyle(
-                        color: Color(0xFF6B7280),
+                      subtitle!.tr(),
+                      style: TextStyle(
+                        color: AppColors.subtle,
                         fontSize: 12,
                       ),
                     ),
@@ -750,21 +911,18 @@ class _MenuTile extends StatelessWidget {
                 ],
               ),
             ),
-            if (trailingWidget != null) ...[
-              trailingWidget!,
-              const SizedBox(width: 8),
-            ] else if (trailingText != null) ...[
+            if (trailingText != null) ...[
               Text(
-                trailingText!,
+                trailingText!.tr(),
                 style: const TextStyle(
-                  color: Colors.white,
+                  color: AppColors.subtle,
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
                 ),
               ),
               const SizedBox(width: 8),
             ],
-            const Icon(Icons.chevron_right, color: Color(0xFF4B5563), size: 20),
+            const Icon(Icons.chevron_right, color: AppColors.muted, size: 20),
           ],
         ),
       ),

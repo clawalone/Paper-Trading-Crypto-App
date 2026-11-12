@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart';
 import '../../core/app_theme.dart';
 import '../../core/coin_icon.dart';
 import '../../core/currency_formatters.dart';
@@ -46,10 +46,10 @@ class FuturesPositionCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFF16181C),
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: const Color(0xFF2F3336),
+          color: AppColors.outline,
           width: 1,
         ),
       ),
@@ -64,7 +64,7 @@ class FuturesPositionCard extends StatelessWidget {
                 Container(
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    border: Border.all(color: const Color(0xFF2F3336), width: 1),
+                    border: Border.all(color: AppColors.outline, width: 1),
                   ),
                   child: CoinIcon(symbol: pos.symbol, size: 36),
                 ),
@@ -78,9 +78,9 @@ class FuturesPositionCard extends StatelessWidget {
                       Row(
                         children: [
                           Text(
-                            '${pos.symbol} PERP',
-                            style: const TextStyle(
-                                color: Colors.white,
+                            pos.symbol,
+                            style: TextStyle(
+                                color: AppColors.textPrimary,
                                 fontWeight: FontWeight.w800,
                                 fontSize: 15,
                                 letterSpacing: -0.2),
@@ -151,7 +151,7 @@ class FuturesPositionCard extends StatelessWidget {
             ),
           ),
 
-          const Divider(height: 1, color: Color(0xFF2F3336), thickness: 0.8),
+          Divider(height: 1, color: AppColors.outline, thickness: 0.8),
 
           // ── STATS GRID (TWITTER MICRO-METRICS) ──────────────────────────────
           Padding(
@@ -164,7 +164,7 @@ class FuturesPositionCard extends StatelessWidget {
                     _Stat(
                       label: 'Margin',
                       value: formatter.format(pos.margin),
-                      valueColor: Colors.white,
+                      valueColor: AppColors.textPrimary,
                     ),
                     _Stat(
                       label: 'Position Size',
@@ -212,10 +212,10 @@ class FuturesPositionCard extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: const Color(0xFF202327),
+                color: AppColors.surfaceAlt,
                 borderRadius: BorderRadius.circular(10),
                 border:
-                    Border.all(color: const Color(0xFF2F3336), width: 0.8),
+                    Border.all(color: AppColors.outline, width: 0.8),
               ),
               child: Row(
                 children: [
@@ -255,9 +255,9 @@ class FuturesPositionCard extends StatelessWidget {
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 11),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF202327),
+                  color: AppColors.surfaceAlt,
                   borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: const Color(0xFF2F3336), width: 0.9),
+                  border: Border.all(color: AppColors.outline, width: 0.9),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -287,7 +287,7 @@ class FuturesPositionCard extends StatelessWidget {
     final pnlColor = pnl >= 0 ? AppColors.profit : AppColors.loss;
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF16181C),
+      backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (_) => Padding(
@@ -299,27 +299,27 @@ class FuturesPositionCard extends StatelessWidget {
                 width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                    color: const Color(0xFF2F3336),
+                    color: AppColors.outline,
                     borderRadius: BorderRadius.circular(2))),
             const SizedBox(height: 20),
-            const Text('Close Position?',
+            Text('Close Position?',
                 style: TextStyle(
-                    color: Colors.white,
+                    color: AppColors.textPrimary,
                     fontWeight: FontWeight.w800,
                     fontSize: 18,
                     letterSpacing: -0.3)),
             const SizedBox(height: 6),
             Text(
               '${pos.symbol} ${isLong ? 'Long' : 'Short'} ${pos.leverage}x',
-              style: const TextStyle(color: Color(0xFF71767B), fontSize: 13),
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
             ),
             const SizedBox(height: 20),
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                  color: const Color(0xFF202327),
+                  color: AppColors.surfaceAlt,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFF2F3336), width: 1)),
+                  border: Border.all(color: AppColors.outline, width: 1)),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
@@ -329,8 +329,8 @@ class FuturesPositionCard extends StatelessWidget {
                             color: Color(0xFF71767B), fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
                     const SizedBox(height: 4),
                     Text(formatter.format(pos.margin),
-                        style: const TextStyle(
-                            color: Colors.white,
+                        style: TextStyle(
+                            color: AppColors.textPrimary,
                             fontWeight: FontWeight.w700,
                             fontSize: 13.5)),
                   ]),
@@ -354,8 +354,8 @@ class FuturesPositionCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       formatter.format((pos.margin + pnl).clamp(0, double.infinity)),
-                      style: const TextStyle(
-                          color: Colors.white,
+                      style: TextStyle(
+                          color: AppColors.textPrimary,
                           fontWeight: FontWeight.w700,
                           fontSize: 13.5),
                     ),
@@ -370,13 +370,13 @@ class FuturesPositionCard extends StatelessWidget {
                   child: OutlinedButton(
                     onPressed: () => Navigator.pop(context),
                     style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Color(0xFF2F3336), width: 1),
+                      side: BorderSide(color: AppColors.outline, width: 1),
                       padding: const EdgeInsets.symmetric(vertical: 13),
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(24)),
                     ),
-                    child: const Text('Cancel',
-                        style: TextStyle(color: Color(0xFFE7E9EA), fontWeight: FontWeight.w600)),
+                    child: Text('Cancel',
+                        style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -438,7 +438,7 @@ class _Stat extends StatelessWidget {
           Text(
             value,
             style: TextStyle(
-              color: valueColor ?? Colors.white,
+              color: valueColor ?? AppColors.textPrimary,
               fontSize: 13,
               fontWeight: FontWeight.w700,
             ),

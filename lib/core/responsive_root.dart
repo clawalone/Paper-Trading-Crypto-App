@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart';
 
 import '../features/home/home_shell.dart';
 import '../features/web/web_terminal_shell.dart';

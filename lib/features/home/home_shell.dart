@@ -1,15 +1,17 @@
 import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/material.dart';
+import 'package:stock_arena/core/app_material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
+import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_theme.dart';
 import '../../core/ban_manager.dart';
 import '../../data/auth_provider.dart';
 import '../../data/community_provider.dart';
+import '../../data/market_mode_provider.dart';
 import '../../data/market_provider.dart';
 import '../../data/user_provider.dart';
 import '../auth/login_screen.dart';
@@ -21,6 +23,8 @@ import '../community/community_screen.dart';
 import '../leaderboard/leaderboard_screen.dart';
 import '../futures/futures_screen.dart';
 import '../../data/notification_provider.dart';
+import '../../data/leaderboard_provider.dart';
+import '../../l10n/app_localizations.dart';
 
 final homeTabProvider = StateProvider<int>((ref) => 0);
 
@@ -43,24 +47,6 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     super.initState();
     _startAuthTimer();
     _startUserTimer();
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final avatars = [
-        'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Animals/Cat.png',
-        'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Animals/Dog%20Face.png',
-        'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Animals/Fox.png',
-        'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Animals/Bear.png',
-        'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Animals/Panda.png',
-        'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Animals/Rabbit%20Face.png',
-        'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Animals/Tiger%20Face.png',
-        'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Animals/Lion.png',
-        'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Animals/Monkey%20Face.png',
-        'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Animals/Unicorn.png'
-      ];
-      for (final url in avatars) {
-        precacheImage(NetworkImage(url), context);
-      }
-    });
   }
 
   void _startAuthTimer() {
@@ -85,7 +71,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   }
 
   Widget _buildHubIcon({required bool isSelected, required bool hasUnread}) {
-    final icon = isSelected ? const Icon(Icons.forum_rounded) : const Icon(Icons.forum_outlined);
+    final icon = isSelected ? const Icon(Icons.chat_bubble_rounded) : const Icon(Icons.chat_bubble_outline_rounded);
     if (!hasUnread) return icon;
 
     return Stack(
@@ -177,9 +163,9 @@ class _HomeShellState extends ConsumerState<HomeShell> {
           );
         }
 
-        return const Scaffold(
+        return Scaffold(
           backgroundColor: AppColors.background,
-          body: Center(
+          body: const Center(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -303,6 +289,16 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       return _buildBannedScreen(banReason, displayUid, bannedAt);
     }
 
+    // Check if account has an unacknowledged administrative reset notice
+    final resetNotice = userState.profile.resetNotice;
+    final isResetUnacknowledged = resetNotice != null && resetNotice['acknowledged'] != true;
+    if (isResetUnacknowledged) {
+      final resetReason = resetNotice['reason']?.toString() ?? 'Account reset due to platform policy violation.';
+      final resetAtStr = resetNotice['resetAt']?.toString();
+      DateTime? resetAt = resetAtStr != null ? DateTime.tryParse(resetAtStr) : null;
+      return _buildResetNoticeScreen(resetReason, resetAt);
+    }
+
     // If profile sync timed out or failed without cached profile, show sync error view instead of jumping to Onboarding
     if (userState.hasSyncError && !userState.isOnboarded) {
       return Scaffold(
@@ -365,31 +361,74 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     final posts = communityState.posts;
     final currentIndex = ref.watch(homeTabProvider);
     final isMarketOnline = ref.watch(marketOnlineProvider);
+    final marketMode = ref.watch(marketModeProvider);
+    final isStocks = marketMode == MarketMode.stocks;
     ref.watch(notificationProvider); // Keeps real-time notification listener active app-wide
+    ref.watch(leaderboardProvider); // Pre-warms both Global & Streak Leaderboards on app open
+
+    final screens = isStocks
+        ? const [
+            DashboardScreen(),
+            MarketScreen(),
+            PortfolioScreen(),
+            CommunityScreen(),
+            LeaderboardScreen(),
+          ]
+        : const [
+            DashboardScreen(),
+            MarketScreen(),
+            FuturesScreen(),
+            PortfolioScreen(),
+            CommunityScreen(),
+            LeaderboardScreen(),
+          ];
+
+    ref.listen<MarketMode>(marketModeProvider, (prev, next) {
+      if (prev != null && prev != next) {
+        final current = ref.read(homeTabProvider);
+        if (next == MarketMode.stocks) {
+          // Crypto [0:Home, 1:Spot, 2:Futures, 3:Portfolio, 4:Hub, 5:Rank]
+          // Stocks [0:Home, 1:Stocks, 2:Portfolio, 3:Hub, 4:Rank]
+          if (current == 2) {
+            ref.read(homeTabProvider.notifier).state = 1;
+          } else if (current == 3) {
+            ref.read(homeTabProvider.notifier).state = 2;
+          } else if (current == 4) {
+            ref.read(homeTabProvider.notifier).state = 3;
+          } else if (current == 5) {
+            ref.read(homeTabProvider.notifier).state = 4;
+          }
+        } else {
+          // Stocks [0:Home, 1:Stocks, 2:Portfolio, 3:Hub, 4:Rank]
+          // Crypto [0:Home, 1:Spot, 2:Futures, 3:Portfolio, 4:Hub, 5:Rank]
+          if (current == 2) {
+            ref.read(homeTabProvider.notifier).state = 3;
+          } else if (current == 3) {
+            ref.read(homeTabProvider.notifier).state = 4;
+          } else if (current == 4) {
+            ref.read(homeTabProvider.notifier).state = 5;
+          }
+        }
+      }
+    });
+
+    final effectiveIndex = currentIndex.clamp(0, screens.length - 1);
+    final hubIndex = isStocks ? 3 : 4;
 
     bool hasUnreadHubPosts = false;
-    if (posts.isNotEmpty && currentIndex != 4) {
+    if (posts.isNotEmpty && effectiveIndex != hubIndex) {
       final latestPost = posts.first;
       if (_lastViewedHubTime == null || latestPost.timestamp.isAfter(_lastViewedHubTime!)) {
         hasUnreadHubPosts = true;
       }
     }
 
-    final screens = [
-      const DashboardScreen(),
-      const MarketScreen(),
-      const FuturesScreen(),
-      const PortfolioScreen(),
-      const CommunityScreen(),
-      const LeaderboardScreen(),
-    ];
-
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
         
-        if (currentIndex != 0) {
+        if (effectiveIndex != 0) {
           ref.read(homeTabProvider.notifier).state = 0;
         } else {
           final shouldExit = await showDialog<bool>(
@@ -432,54 +471,82 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                 children: [
                   NavigationRail(
                     backgroundColor: AppColors.background,
-                    selectedIndex: currentIndex,
+                    selectedIndex: effectiveIndex,
                     onDestinationSelected: (index) {
                       ref.read(homeTabProvider.notifier).state = index;
-                      if (index == 4) {
+                      if (index == hubIndex) {
                         _lastViewedHubTime = DateTime.now();
                       }
                     },
                     labelType: NavigationRailLabelType.all,
                     useIndicator: true,
                     indicatorColor: AppColors.primary.withValues(alpha: 0.2),
-                    unselectedLabelTextStyle: const TextStyle(color: Colors.white54),
+                    unselectedLabelTextStyle: const TextStyle(color: AppColors.subtle),
                     selectedLabelTextStyle: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold),
-                    unselectedIconTheme: const IconThemeData(color: Colors.white54),
+                    unselectedIconTheme: const IconThemeData(color: AppColors.subtle),
                     selectedIconTheme: const IconThemeData(color: AppColors.primary),
-                    destinations: [
-                      const NavigationRailDestination(
-                        icon: Icon(Icons.dashboard_outlined),
-                        selectedIcon: Icon(Icons.dashboard),
-                        label: Text('Home'),
-                      ),
-                      const NavigationRailDestination(
-                        icon: Icon(Icons.show_chart_outlined),
-                        selectedIcon: Icon(Icons.show_chart),
-                        label: Text('Spot'),
-                      ),
-                      const NavigationRailDestination(
-                        icon: Icon(Icons.bolt_outlined),
-                        selectedIcon: Icon(Icons.bolt),
-                        label: Text('Futures'),
-                      ),
-                      const NavigationRailDestination(
-                        icon: Icon(Icons.account_balance_wallet_outlined),
-                        selectedIcon: Icon(Icons.account_balance_wallet),
-                        label: Text('Portfolio'),
-                      ),
-                      NavigationRailDestination(
-                        icon: _buildHubIcon(isSelected: false, hasUnread: hasUnreadHubPosts),
-                        selectedIcon: _buildHubIcon(isSelected: true, hasUnread: false),
-                        label: const Text('Hub'),
-                      ),
-                      const NavigationRailDestination(
-                        icon: Icon(Icons.leaderboard_outlined),
-                        selectedIcon: Icon(Icons.leaderboard),
-                        label: Text('Ranks'),
-                      ),
-                    ],
+                    destinations: isStocks
+                        ? [
+                            const NavigationRailDestination(
+                              icon: Icon(Icons.dashboard_outlined),
+                              selectedIcon: Icon(Icons.dashboard),
+                              label: Text('Home'),
+                            ),
+                            const NavigationRailDestination(
+                              icon: Icon(Icons.trending_up_rounded),
+                              selectedIcon: Icon(Icons.trending_up_rounded),
+                              label: Text('Stocks'),
+                            ),
+                            const NavigationRailDestination(
+                              icon: Icon(Icons.account_balance_wallet_outlined),
+                              selectedIcon: Icon(Icons.account_balance_wallet),
+                              label: Text('Portfolio'),
+                            ),
+                            NavigationRailDestination(
+                              icon: _buildHubIcon(isSelected: false, hasUnread: hasUnreadHubPosts),
+                              selectedIcon: _buildHubIcon(isSelected: true, hasUnread: false),
+                              label: const Text('Hub'),
+                            ),
+                            const NavigationRailDestination(
+                              icon: Icon(Icons.leaderboard_outlined),
+                              selectedIcon: Icon(Icons.leaderboard),
+                              label: Text('Rank'),
+                            ),
+                          ]
+                        : [
+                            const NavigationRailDestination(
+                              icon: Icon(Icons.dashboard_outlined),
+                              selectedIcon: Icon(Icons.dashboard),
+                              label: Text('Home'),
+                            ),
+                            const NavigationRailDestination(
+                              icon: Icon(Icons.show_chart_outlined),
+                              selectedIcon: Icon(Icons.show_chart),
+                              label: Text('Spot'),
+                            ),
+                            const NavigationRailDestination(
+                              icon: Icon(Icons.bolt_outlined),
+                              selectedIcon: Icon(Icons.bolt),
+                              label: Text('Futures'),
+                            ),
+                            const NavigationRailDestination(
+                              icon: Icon(Icons.account_balance_wallet_outlined),
+                              selectedIcon: Icon(Icons.account_balance_wallet),
+                              label: Text('Portfolio'),
+                            ),
+                            NavigationRailDestination(
+                              icon: _buildHubIcon(isSelected: false, hasUnread: hasUnreadHubPosts),
+                              selectedIcon: _buildHubIcon(isSelected: true, hasUnread: false),
+                              label: const Text('Hub'),
+                            ),
+                            const NavigationRailDestination(
+                              icon: Icon(Icons.leaderboard_outlined),
+                              selectedIcon: Icon(Icons.leaderboard),
+                              label: Text('Rank'),
+                            ),
+                          ],
                   ),
-                  const VerticalDivider(thickness: 1, width: 1, color: Color(0xFF2B3139)),
+                  VerticalDivider(thickness: 1, width: 1, color: AppColors.outline),
                   Expanded(
                     child: Container(
                       color: AppColors.background, // Match background
@@ -489,7 +556,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                         child: Column(
                           children: [
                             if (!isMarketOnline) _buildOfflineBanner(),
-                            Expanded(child: screens[currentIndex]),
+                            Expanded(child: screens[effectiveIndex]),
                           ],
                         ),
                       ),
@@ -499,6 +566,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
               ),
             );
           }
+          final l10n = AppLocalizations.of(context);
           return Scaffold(
             backgroundColor: AppColors.background,
             body: SafeArea(
@@ -506,54 +574,82 @@ class _HomeShellState extends ConsumerState<HomeShell> {
               child: Column(
                 children: [
                   if (!isMarketOnline) _buildOfflineBanner(),
-                  Expanded(child: screens[currentIndex]),
+                  Expanded(child: screens[effectiveIndex]),
                 ],
               ),
             ),
             bottomNavigationBar: Container(
-              decoration: const BoxDecoration(
-                border: Border(top: BorderSide(color: Color(0xFF1E2329), width: 0.8)),
+              decoration: BoxDecoration(
+                border: Border(top: BorderSide(color: AppColors.outline, width: 0.8)),
               ),
               child: NavigationBar(
-              selectedIndex: currentIndex,
+              selectedIndex: effectiveIndex,
               onDestinationSelected: (index) {
                 ref.read(homeTabProvider.notifier).state = index;
-                if (index == 4) {
+                if (index == hubIndex) {
                   _lastViewedHubTime = DateTime.now();
                 }
               },
-              destinations: [
-                const NavigationDestination(
-                  icon: Icon(Icons.dashboard_outlined),
-                  selectedIcon: Icon(Icons.dashboard),
-                  label: 'Home',
-                ),
-                const NavigationDestination(
-                  icon: Icon(Icons.show_chart_outlined),
-                  selectedIcon: Icon(Icons.show_chart),
-                  label: 'Spot',
-                ),
-                const NavigationDestination(
-                  icon: Icon(Icons.bolt_outlined),
-                  selectedIcon: Icon(Icons.bolt),
-                  label: 'Futures',
-                ),
-                const NavigationDestination(
-                  icon: Icon(Icons.account_balance_wallet_outlined),
-                  selectedIcon: Icon(Icons.account_balance_wallet),
-                  label: 'Portfolio',
-                ),
-                NavigationDestination(
-                  icon: _buildHubIcon(isSelected: false, hasUnread: hasUnreadHubPosts),
-                  selectedIcon: _buildHubIcon(isSelected: true, hasUnread: false),
-                  label: 'Hub',
-                ),
-                const NavigationDestination(
-                  icon: Icon(Icons.leaderboard_outlined),
-                  selectedIcon: Icon(Icons.leaderboard),
-                  label: 'Ranks',
-                ),
-              ],
+              destinations: isStocks
+                  ? [
+                      NavigationDestination(
+                        icon: const Icon(Icons.home_outlined),
+                        selectedIcon: const Icon(Icons.home_rounded),
+                        label: l10n?.navHome ?? 'Home'.tr(),
+                      ),
+                      NavigationDestination(
+                        icon: const Icon(Icons.candlestick_chart_outlined),
+                        selectedIcon: const Icon(Icons.candlestick_chart_rounded),
+                        label: 'Stocks'.tr(),
+                      ),
+                      NavigationDestination(
+                        icon: const Icon(Icons.account_balance_wallet_outlined),
+                        selectedIcon: const Icon(Icons.account_balance_wallet_rounded),
+                        label: l10n?.navPortfolio ?? 'Portfolio'.tr(),
+                      ),
+                      NavigationDestination(
+                        icon: _buildHubIcon(isSelected: false, hasUnread: hasUnreadHubPosts),
+                        selectedIcon: _buildHubIcon(isSelected: true, hasUnread: false),
+                        label: l10n?.navHub ?? 'Hub'.tr(),
+                      ),
+                      NavigationDestination(
+                        icon: const Icon(Icons.emoji_events_outlined),
+                        selectedIcon: const Icon(Icons.emoji_events_rounded),
+                        label: l10n?.leaderboard ?? 'Rank'.tr(),
+                      ),
+                    ]
+                  : [
+                      NavigationDestination(
+                        icon: const Icon(Icons.home_outlined),
+                        selectedIcon: const Icon(Icons.home_rounded),
+                        label: l10n?.navHome ?? 'Home'.tr(),
+                      ),
+                      NavigationDestination(
+                        icon: const Icon(Icons.candlestick_chart_outlined),
+                        selectedIcon: const Icon(Icons.candlestick_chart_rounded),
+                        label: l10n?.navSpot ?? 'Spot'.tr(),
+                      ),
+                      NavigationDestination(
+                        icon: const Icon(Icons.electric_bolt_outlined),
+                        selectedIcon: const Icon(Icons.electric_bolt_rounded),
+                        label: l10n?.navFutures ?? 'Futures'.tr(),
+                      ),
+                      NavigationDestination(
+                        icon: const Icon(Icons.account_balance_wallet_outlined),
+                        selectedIcon: const Icon(Icons.account_balance_wallet_rounded),
+                        label: l10n?.navPortfolio ?? 'Portfolio'.tr(),
+                      ),
+                      NavigationDestination(
+                        icon: _buildHubIcon(isSelected: false, hasUnread: hasUnreadHubPosts),
+                        selectedIcon: _buildHubIcon(isSelected: true, hasUnread: false),
+                        label: l10n?.navHub ?? 'Hub'.tr(),
+                      ),
+                      NavigationDestination(
+                        icon: const Icon(Icons.emoji_events_outlined),
+                        selectedIcon: const Icon(Icons.emoji_events_rounded),
+                        label: l10n?.leaderboard ?? 'Rank'.tr(),
+                      ),
+                    ],
             ),
           ),
         );
@@ -1060,6 +1156,172 @@ class _HomeShellState extends ConsumerState<HomeShell> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildResetNoticeScreen(String reason, DateTime? resetAt) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Amber Reset Notice Badge
+                Container(
+                  width: 76,
+                  height: 76,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.4), width: 1.5),
+                  ),
+                  child: const Center(
+                    child: Icon(Icons.restart_alt_rounded, color: Color(0xFFF59E0B), size: 40),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                const Text(
+                  'ACCOUNT RESET NOTICE',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.2,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+
+                const Text(
+                  'Your paper trading account has been reset by platform administration.',
+                  style: TextStyle(
+                    color: Color(0xFF8E95A2),
+                    fontSize: 13,
+                    height: 1.45,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 20),
+
+                // Reason Card
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF16181D),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.4)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.info_outline, color: Color(0xFFF59E0B), size: 16),
+                          SizedBox(width: 8),
+                          Text(
+                            'REASON FOR RESET',
+                            style: TextStyle(
+                              color: Color(0xFFF59E0B),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        reason,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13.5,
+                          height: 1.4,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      if (resetAt != null) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          'Reset on: ${DateFormat('dd MMM yyyy, HH:mm').format(resetAt)}',
+                          style: const TextStyle(color: Color(0xFF6B7280), fontSize: 11),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Notice details card
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF16181D),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFF2B3139)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'What has been updated:',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                      const SizedBox(height: 8),
+                      _buildResetPoint('Virtual cash balance restored to \$5,000.00 starting capital'),
+                      _buildResetPoint('All glitched / exploited positions and unearned PnL removed'),
+                      _buildResetPoint('You can now continue trading fairly and competing on the leaderboard'),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // "I Understand" Button
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      ref.read(userProvider.notifier).acknowledgeResetNotice();
+                    },
+                    icon: const Icon(Icons.check_circle_outline, size: 20),
+                    label: const Text(
+                      'I Understand',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFF59E0B),
+                      foregroundColor: Colors.black,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildResetPoint(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('• ', style: TextStyle(color: Color(0xFFF59E0B), fontSize: 13, fontWeight: FontWeight.bold)),
+          Expanded(
+            child: Text(text, style: const TextStyle(color: Color(0xFF8E95A2), fontSize: 12, height: 1.35)),
+          ),
+        ],
       ),
     );
   }
